@@ -9,8 +9,9 @@ export default defineConfig({
   },
   plugins: [
     react({
-      // Only apply React to popup, not background
+      // Only apply React to popup, not background or content scripts
       include: /src\/popup\//,
+      exclude: [/src\/content\//, /src\/background\//],
     }),
     webExtension({
       manifest: './manifest.json',
