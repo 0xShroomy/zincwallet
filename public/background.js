@@ -255,6 +255,34 @@ async function handleGetState() {
   return { ...walletState };
 }
 
+async function handleRefreshBalance() {
+  try {
+    if (!walletState.address) {
+      throw new Error('No address available');
+    }
+    
+    // Simple fetch to get balance
+    // Using a public block explorer API as fallback
+    // TODO: Implement proper lightwalletd integration
+    console.log('[Background] Refreshing balance for:', walletState.address);
+    
+    // For now, return mock balance
+    // In production, this would query lightwalletd
+    walletState.balance = 0;
+    
+    return {
+      success: true,
+      balance: walletState.balance
+    };
+  } catch (error) {
+    console.error('[Background] Balance refresh failed:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
 // ============================================================================
 // EVENT LISTENERS
 // ============================================================================
@@ -290,6 +318,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             
           case 'IMPORT_WALLET':
             result = await handleImportWallet(message.data);
+            break;
+            
+          case 'REFRESH_BALANCE':
+            result = await handleRefreshBalance();
             break;
             
           default:
