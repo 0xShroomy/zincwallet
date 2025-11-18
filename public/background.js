@@ -4,13 +4,14 @@
 console.log('[Background] Starting...');
 
 // ============================================================================
-// LOAD BIP39 LIBRARY AND ZCASH KEYS
+// LOAD BIP39 LIBRARY, ZCASH KEYS, AND LIGHTWALLETD CLIENT
 // ============================================================================
 
-// Import BIP39 library and Zcash address derivation
+// Import BIP39 library, Zcash address derivation, and lightwalletd client
 /* global importScripts */
 importScripts('bip39.js');
 importScripts('zcash-keys.js');
+importScripts('lightwalletd-client.js');
 
 // ============================================================================
 // CRYPTO UTILITIES
@@ -139,6 +140,11 @@ async function initWalletState() {
       walletState.isLocked = false;
       walletState.address = session.walletAddress;
       console.log('[Background] Restored wallet session:', walletState.address);
+      
+      // Auto-refresh balance after session restore
+      handleRefreshBalance().catch(err => {
+        console.warn('[Background] Auto-refresh balance failed:', err);
+      });
     } else {
       // Session expired, clear it
       await chrome.storage.session.remove(['walletUnlocked', 'walletAddress', 'unlockTime']);
@@ -219,6 +225,11 @@ async function handleUnlockWallet(data) {
     console.log('[Background] Address:', address);
     console.log('[Background] Derivation path:', derivationPath);
     
+    // Auto-refresh balance after unlock
+    handleRefreshBalance().catch(err => {
+      console.warn('[Background] Auto-refresh balance failed:', err);
+    });
+    
     return {
       success: true,
       address: address
@@ -279,6 +290,11 @@ async function handleImportWallet(data) {
     console.log('[Background] Address:', address);
     console.log('[Background] Derivation path:', derivationPath);
     
+    // Auto-refresh balance after import
+    handleRefreshBalance().catch(err => {
+      console.warn('[Background] Auto-refresh balance failed:', err);
+    });
+    
     return {
       success: true,
       address: address
@@ -299,24 +315,31 @@ async function handleRefreshBalance() {
       throw new Error('No address available');
     }
     
-    // Simple fetch to get balance
-    // Using a public block explorer API as fallback
-    // TODO: Implement proper lightwalletd integration
     console.log('[Background] Refreshing balance for:', walletState.address);
     
-    // For now, return mock balance
-    // In production, this would query lightwalletd
-    walletState.balance = 0;
+    // Query lightwalletd for real balance
+    const result = await self.LightwalletdClient.getBalance(walletState.address);
+    
+    // Update wallet state with real balance
+    walletState.balance = result.balance;
+    
+    console.log('[Background] Balance updated:', {
+      balance: result.balance,
+      transactions: result.transactions,
+      balanceZEC: (result.balance / 100000000).toFixed(8),
+    });
     
     return {
       success: true,
-      balance: walletState.balance
+      balance: walletState.balance,
+      transactions: result.transactions,
     };
   } catch (error) {
     console.error('[Background] Balance refresh failed:', error);
     return {
       success: false,
-      error: error.message
+      error: error.message,
+      balance: walletState.balance, // Return current balance
     };
   }
 }
