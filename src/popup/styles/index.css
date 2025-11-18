@@ -1,0 +1,62 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body {
+    @apply font-sans antialiased bg-zinc-black text-zinc-100;
+    width: 375px;
+    min-height: 600px;
+    max-height: 600px;
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+  }
+  
+  #root {
+    width: 100%;
+    min-height: 600px;
+    display: flex;
+    flex-direction: column;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-zinc-black;
+  }
+  
+  .btn-primary {
+    @apply bg-amber-500 text-black hover:bg-amber-400 focus:ring-amber-500 shadow-lg shadow-amber-500/20 hover:shadow-amber-500/40;
+  }
+  
+  .btn-secondary {
+    @apply bg-zinc-800 text-zinc-100 hover:bg-zinc-700 focus:ring-zinc-600 border border-zinc-700;
+  }
+  
+  .card {
+    @apply bg-zinc-darker rounded-xl shadow-xl border border-zinc-800 p-6;
+  }
+  
+  .input {
+    @apply w-full px-4 py-2 bg-zinc-dark border border-zinc-700 text-zinc-100 placeholder-zinc-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition-all;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0a0a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #3f3f46;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #52525b;
+}

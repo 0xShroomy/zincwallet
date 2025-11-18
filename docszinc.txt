@@ -1,0 +1,1514 @@
+Welcome to Zinc Protocol
+Digital artifacts on Zcash - A comprehensive protocol framework for NFTs, tokens, and decentralized trading
+
+Introduction
+Zinc Protocol brings the innovation of on-chain inscriptions to Zcash with a fundamental redesign that addresses the limitations of existing inscription protocols. If you're coming from Bitcoin Ordinals, you'll find Zinc delivers a cleaner, more efficient, and more powerful approach to creating digital artifacts on the blockchain.
+
+What is Zinc Protocol?
+Zinc is a comprehensive, multi-protocol framework for creating and trading digital artifacts on Zcash. The protocol leverages Zcash's UTXO model and OP_RETURN outputs to provide a clean, efficient, and sustainable inscription system.
+
+Core Components
+Zinc Core Protocol
+NFT collections and unique digital artifacts with efficient on-chain storage
+
+ZRC-20 Token Standard
+Fungible tokens with one-step transfers and binary encoding
+
+Marketplace Protocol
+Built-in decentralized trading with atomic swaps and cryptographic locks
+
+Key Advantages
+Technical Innovation
+OP_RETURN Architecture: Zinc uses purpose-built OP_RETURN outputs instead of witness data, eliminating the complexity of satoshi tracking while providing a clean, permanent storage mechanism.
+
+Binary Encoding: Compact binary serialization reduces inscription size by 60-70% compared to JSON-based protocols, making inscriptions more efficient and cost-effective.
+
+Transaction-Based Identity: NFTs and tokens are identified by transaction IDs (txids), not individual satoshis, eliminating edge cases and simplifying the entire protocol.
+
+Economic Benefits
+10,000x Lower Costs: Inscriptions cost ~$0.002 on Zcash vs $5-50+ on Bitcoin
+Predictable Fees: Abundant block space ensures consistent, low-cost operations
+No Platform Fees: Protocol-level marketplace eliminates centralized platform fees
+Sustainable Economics: Tip-based indexer funding creates aligned incentives
+Developer Experience
+Clean Protocol Design: Well-defined state machine with minimal edge cases
+Comprehensive Documentation: Detailed specifications and implementation guides
+Open Source: Fully transparent codebase and protocol specifications
+Extensible Framework: Version system enables future protocol enhancements
+Quick Start Guide
+Getting Started
+Start creating inscriptions and deploying tokens
+
+Why Zinc?
+Comprehensive comparison with Bitcoin Ordinals
+
+How Inscriptions Work
+Understanding Zinc's OP_RETURN approach
+
+Indexer Specification
+Complete indexer architecture and validation rules
+
+Protocol Architecture
+Zinc's multi-layered architecture provides separation of concerns and protocol extensibility:
+
+
+┌─────────────────────────────────────┐
+│         Zinc Protocol v1            │
+│  (Binary encoding on OP_RETURN)     │
+└─────────────────────────────────────┘
+                 │
+    ┌────────────┼────────────┐
+    ▼            ▼            ▼
+┌────────┐  ┌─────────┐  ┌──────────────┐
+│  Zinc  │  │ ZRC-20  │  │ Marketplace  │
+│  Core  │  │ Tokens  │  │   Trading    │
+└────────┘  └─────────┘  └──────────────┘
+Use Cases
+For Collectors & Traders
+Mint entire NFT collections for under $5
+Trade without centralized platforms or fees
+Experience true atomic swaps on-chain
+Benefit from early ecosystem positioning
+For Creators & Builders
+Deploy tokens for pennies instead of hundreds of dollars
+Build applications without platform lock-in
+Run indexers and earn tips from the ecosystem
+Leverage abundant block space for experimentation
+For the Web3 Community
+Proven inscription model with superior economics
+True decentralization without platform dependencies
+Sustainable, tip-based infrastructure funding
+Cross-chain opportunity in an early-stage ecosystem
+Community & Resources
+Technical Documentation: Comprehensive protocol specifications and implementation guides
+GitHub Repository: Open-source codebase and development resources
+Indexer APIs: Public endpoints for application integration
+Developer Support: Active community and technical assistance
+Ready to explore? Start with Why Zinc? to understand the fundamental advantages, or jump into Getting Started to begin creating inscriptions.
+
+Getting Started with Zinc Protocol
+
+A comprehensive guide to deploying tokens, creating inscriptions, and utilizing the Zinc Protocol marketplace
+
+
+
+
+
+Getting Started with Zinc Protocol
+A comprehensive guide to deploying tokens, creating inscriptions, and utilizing the Zinc Protocol marketplace
+
+Prerequisites
+Before beginning development with Zinc Protocol, ensure you have the following:
+
+A Zcash wallet with transparent address support (t1 prefix)
+Sufficient ZEC for transaction fees (approximately 0.001 ZEC per inscription)
+Understanding of cryptocurrency transaction fundamentals
+Important: Zinc Protocol operates exclusively with transparent P2PKH addresses. Shielded addresses (z-addresses) are not compatible with the protocol.
+
+Protocol Architecture
+Zinc Protocol is composed of three sub-protocols that work together to provide a complete digital asset infrastructure:
+
+Zinc Core (0x00): NFT collections and digital artifact management
+ZRC-20 (0x01): Fungible token standard for creating and managing tokens
+Marketplace (0x02): Decentralized trading infrastructure with atomic swap capabilities
+All protocol operations are executed through inscriptions embedded in OP_RETURN outputs using compact binary encoding, ensuring efficient on-chain storage and verification.
+
+Implementation Guide
+1. Token Deployment (ZRC-20)
+The following example demonstrates the deployment of a fungible token using the ZRC-20 standard:
+
+Example: Deploying a "ZINC" Token
+
+
+Parameters:
+- Ticker: ZINC (4-6 uppercase alphanumeric characters)
+- Max Supply: 21,000,000
+- Mint Limit: 1,000 (max per mint operation)
+- Decimals: 8
+Binary Structure:
+
+
+Protocol ID: 0x01 (ZRC-20)
+Operation: 0x00 (Deploy)
+Ticker: ZINC (null-terminated)
+Max Supply: 21000000 (u64, little-endian)
+Mint Limit: 1000 (u64, little-endian)
+Decimals: 8 (u8)
+Transaction Structure Requirements:
+
+Output[0]: OP_RETURN output containing the binary inscription
+Output[1]: 150,000 zatoshis sent to treasury address (t1ZcnUqva1dCydNPFd3EH8b7Scmz1V5oh1N)
+Output[2]: Change output returned to sender address
+Result: The transaction ID serves as the unique token identifier. All subsequent mint and transfer operations reference this deployment transaction ID.
+
+2. Token Minting
+Following deployment, tokens can be minted up to the maximum supply limit defined in the deployment transaction:
+
+Example: Minting 1,000 ZINC Tokens
+
+
+Parameters:
+- Deploy txid: [token deployment transaction ID]
+- Amount: 1000
+Validation Requirements:
+
+Mint amount must not exceed the per-operation mint limit defined during deployment
+Cumulative minted supply cannot exceed the maximum supply
+Minted tokens are credited to the transaction sender's address
+Transaction Cost: Approximately 0.0015 ZEC per mint operation
+
+3. NFT Collection Creation (Zinc Core)
+The Zinc Core protocol enables the deployment of NFT collections and the minting of unique digital artifacts:
+
+Example: Deploying a "ZcashApes" Collection
+
+
+Parameters:
+- Collection name: "ZcashApes"
+- Metadata: Optional JSON containing collection information
+Transaction Structure:
+
+
+Protocol ID: 0x00 (Zinc Core)
+Operation: 0x00 (Deploy)
+Collection name: "ZcashApes"
+Minting NFTs within a Collection:
+
+
+Protocol ID: 0x00 (Zinc Core)
+Operation: 0x01 (Mint)
+Collection txid: [deployment txid]
+Content:
+  - Protocol: "ipfs" | "arweave" | "http" | "plaintext"
+  - Data: [CID/URL/text content]
+  - MIME type: "image/png" | "image/jpeg" | etc.
+Supported Content Protocols:
+
+IPFS: CIDv0 format (46 chars, starts with "Qm")
+Arweave: 43-char base64url transaction ID
+HTTP/HTTPS: Direct URL (max 74 bytes)
+PlainText: UTF-8 text (max 74 bytes)
+4. Marketplace Listing
+Create trustless peer-to-peer asset listings using the marketplace protocol:
+
+Example: Listing an NFT for Sale
+
+
+Parameters:
+- Asset ID: [NFT transaction ID or token deployment transaction ID]
+- Amount: 1 (for NFTs, must be exactly 1)
+- Price: 1000000000 (10 ZEC expressed in zatoshis)
+- Nonce: 1 (unique identifier for this seller's listing)
+- Expiry: 4294967295 (u32::MAX indicates no expiration)
+Transaction Structure:
+
+
+Outputs:
+[0] OP_RETURN output containing listing inscription
+[1] Lock UTXO (10,000 zatoshis) — establishes cryptographic commitment
+[2] 150,000 zatoshis to treasury address
+[3] Change output to seller
+Critical: The Lock UTXO must be spent by prospective buyers to claim the asset, ensuring trustless atomic settlement between parties.
+
+5. Claiming Listed Assets
+Purchase listed assets through the marketplace by spending the associated Lock UTXO:
+
+Transaction Structure:
+
+
+Inputs:
+[0] Lock UTXO from the listing transaction (proves knowledge of listing parameters)
+[1] Buyer's payment UTXO (must cover price and transaction fees)
+[2+] Additional UTXOs as required
+Outputs:
+[0] OP_RETURN output containing claim inscription
+[1] Exact payment to seller (must match listing price precisely)
+[2] Optional tip to indexer
+[3] Change output to buyer
+Security Requirements:
+
+Payment amount must exactly match the listing price
+Payment recipient must be the original seller address
+Lock UTXO preimage must be cryptographically valid
+Self-dealing prevention: buyer and seller addresses must differ
+Best Practices
+Transaction Fee Management
+Mandatory Treasury Payment: All inscription operations require a minimum 150,000 zatoshi payment to the treasury address. This payment supports indexer infrastructure and mitigates spam attacks.
+
+Priority Processing: During periods of high network demand, higher treasury payments may result in expedited indexing priority.
+
+Asset Management
+Listing Restrictions: Assets with active marketplace listings are locked and cannot be transferred until the listing is cancelled or claimed.
+
+Nonce Management: Each marketplace listing requires a unique nonce value per seller address. Implement a systematic nonce allocation strategy to prevent conflicts.
+
+Pre-Transaction Validation
+Recommended Validation Checks:
+
+Verify token ticker availability before initiating deployment
+Confirm current supply has not reached maximum before minting operations
+Validate asset ownership before creating marketplace listings
+Ensure sufficient unlocked balance before initiating transfers
+Advanced Topics
+Binary Encoding
+Understanding Zinc's compact binary format
+
+Indexer Specification
+Complete validation rules and architecture
+
+Priority Tips
+Tip economics and indexer incentives
+
+Protocol References
+Zinc Core Protocol
+NFT collections and digital artifacts
+
+ZRC-20 Token Standard
+Fungible tokens with one-step transfers
+
+Marketplace Protocol
+Trustless trading with cryptographic locks
+
+Developer Resources
+Operating an Indexer
+Indexers provide critical infrastructure by processing blockchain data and exposing APIs for application integration:
+
+Process and validate blocks from Zcash nodes
+Validate inscriptions against protocol specifications
+Maintain global state including balances, ownership records, and active listings
+Generate revenue through inscription creator tips
+Reference: See the Indexer Specification for comprehensive implementation details.
+
+Application Development
+Integrate Zinc Protocol into decentralized applications:
+
+Query indexer APIs to retrieve token balances and transaction history
+Display NFT collections with associated metadata
+Implement marketplace user interfaces
+Develop automated trading systems and analytics platforms
+Contributing to the Ecosystem
+Participate in the Zinc Protocol ecosystem:
+
+GitHub: Contribute to open-source protocol implementations
+Documentation: Enhance technical guides and protocol specifications
+Community: Share tools, applications, and integration libraries
+Governance: Engage in protocol improvement discussions
+Implementation Patterns
+Fair Launch Token Distribution
+
+1. Deploy token with appropriate mint limit per operation
+2. Implement equitable access (no pre-mining advantage)
+3. Enable community-driven minting to maximum supply
+4. Achieve decentralized token distribution
+NFT Collection Deployment
+
+1. Deploy collection contract
+2. Mint NFTs in sequential order
+3. Distribute via marketplace listings or direct transfers
+4. Implement rarity tracking through metadata attributes
+Decentralized Marketplace Trading
+
+1. Seller creates listing with cryptographic Lock UTXO
+2. Buyer queries indexer API to discover available listings
+3. Buyer executes claim by spending Lock UTXO and transferring payment
+4. Atomic settlement ensures simultaneous asset transfer and payment
+5. Indexer updates ownership records
+Transaction Cost Analysis
+Transaction costs are based on standard Zcash network fees plus the mandatory treasury payment:
+
+Operation	Network Fee (ZEC)	Treasury Payment (ZEC)	Total Cost (ZEC)
+Deploy Token	0.0001	0.0015	0.0016
+Mint Token	0.0001	0.0015	0.0016
+Transfer Token	0.0001	0.0015	0.0016
+Mint NFT	0.0001	0.0015	0.0016
+List on Marketplace	0.0001	0.0015	0.0016
+Claim Listing	0.0001	0.0000	0.0001
+Note: Zcash's low transaction fees enable cost-efficient protocol operations compared to alternative blockchain platforms.
+
+Troubleshooting
+Common Error Messages
+"Ticker already exists"
+
+Cause: The requested token ticker has already been deployed by another address
+Resolution: Select an alternative ticker for your token deployment
+"Insufficient balance"
+
+Cause: Account balance is insufficient, or tokens are locked in active marketplace listings
+Resolution: Verify available balance excluding locked amounts, or cancel active listings
+"Invalid mint limit"
+
+Cause: Requested mint amount exceeds the per-operation limit defined during token deployment
+Resolution: Reduce mint amount to comply with the deployment mint limit parameter
+"Listing expired"
+
+Cause: The marketplace listing has exceeded its defined expiry block height
+Resolution: Listing cannot be claimed; seller must create a new listing if desired
+"Lock UTXO already spent"
+
+Cause: Another buyer has already claimed this listing
+Resolution: The asset is no longer available; search for alternative listings
+Next Steps
+Having completed this introduction to Zinc Protocol, consider the following progression:
+
+Experimentation: Deploy test tokens or NFT collections to familiarize yourself with protocol operations
+Exploration: Query indexer APIs to browse existing collections, tokens, and marketplace activity
+Development: Build applications, tools, or integrations leveraging the Zinc Protocol
+Contribution: Engage with the community and contribute to the ecosystem's growth
+For additional information and support, refer to the protocol documentation and technical specifications linked throughout this guide.
+
+Welcome to Zinc Protocol
+
+Digital artifacts on Zcash - A comprehensive protocol framework for NFTs, tokens, and decentralized trading
+
+Why Zinc?
+
+Understanding the advantages of Zinc over Bitcoin Ordina
+
+
+
+
+Overview
+Why Zinc?
+Understanding the advantages of Zinc over Bitcoin Ordinals
+
+Zcash Advantages
+1. Cost Efficiency
+Zcash block time: 75 seconds (4x faster than Bitcoin's 10 minutes)
+Zcash fees: ~$0.0002 per transaction
+Bitcoin fees: $5-50+ per transaction during congestion
+You can do 25,000 Zinc inscriptions for the cost of 1 Bitcoin Ordinal
+2. Transparent & Private Options
+Zinc uses transparent addresses (like Bitcoin)
+Users can optionally shield assets for privacy
+Future: Private inscriptions while maintaining verifiability
+3. Technical Maturity
+Zcash is a Bitcoin fork with 8+ years of battle-testing
+Same UTXO model, same security guarantees
+Advanced cryptography (zk-SNARKs) proven at scale
+4. Block Space
+Zcash has abundant block space
+No fee market wars
+Predictable, low costs
+Zinc Protocol Advantages
+1. Clean Design
+No sat tracking complexity
+No inscription envelope hacks
+No cursed inscriptions
+No inscription splitting issues
+2. Built-In Features
+Native marketplace (no centralized platforms)
+Atomic swaps at protocol level
+One-step transfers (vs. BRC-20's two-step)
+Efficient binary encoding
+3. Extensibility
+Protocol framework allows new sub-protocols
+Version byte enables upgrades
+Clean separation of concerns
+4. Better Economics
+10,000x cheaper than Bitcoin
+Sustainable indexer funding
+No platform fees
+True decentralization
+5. Developer-Friendly
+Clear, simple protocol
+Easy to build on
+Well-documented
+Open source
+Technical Comparison Summary
+Feature	Bitcoin Ordinals	Zinc Protocol
+Data Location	Witness data	OP_RETURN
+Tracking	Satoshi-based	Transaction-based
+Encoding	JSON (verbose)	Binary (compact)
+Transfers	Implicit (sat movement)	Explicit (inscriptions)
+Marketplace	Centralized platforms	Protocol-level (atomic)
+Fees	$5-50+ per inscription	$0.002 per inscription
+Indexer Model	Volunteer/centralized	Tip-funded (sustainable)
+Token Standard	BRC-20 (2-step transfers)	ZRC-20 (1-step transfers)
+Complexity	High (ordinal theory)	Low (txid-based)
+Edge Cases	Many (cursed, split, etc.)	Minimal (designed upfront)
+Who Should Get Involved
+For Collectors & Traders
+Early Ecosystem:
+
+Ground floor opportunity
+Low competition
+Mint entire collections for $5
+First-mover advantage
+Better Economics:
+
+Actually affordable to collect
+No gas wars
+Trade without platform fees
+True ownership
+Innovation:
+
+On-chain marketplace
+Atomic swaps
+No trusted third parties
+For Creators & Builders
+Launch Tokens for Pennies:
+
+Deploy a token: $0.002
+21 million supply minted: $42
+vs. Ethereum: $50-500 in gas
+vs. Bitcoin: $5,000-50,000 in fees
+Build Without Limits:
+
+Abundant block space
+Predictable costs
+No fee spikes
+Fast confirmations (75 seconds)
+Sustainable Infrastructure:
+
+Run an indexer, earn tips
+Build apps, integrate easily
+No platform lock-in
+For the Bitcoin Ordinals Community
+You Understand the Vision:
+
+Digital artifacts on blockchain
+Immutable, permanent, trustless
+No middlemen, no platforms
+Zinc Delivers That Vision Better:
+
+Cleaner protocol
+Lower costs
+Better UX
+More decentralized
+Cross-Chain Opportunity:
+
+Bitcoin Ordinals: $60B+ in value
+Zcash ecosystem: Early stage
+Proven model + better tech = huge potential
+Conclusion
+Zinc is what happens when you learn from Ordinals and design a protocol from first principles:
+
+Simple: No sat tracking, just txids
+Efficient: Binary encoding, 10,000x cheaper
+Complete: NFTs, tokens, and marketplace in one protocol
+Sustainable: Tip-based indexer economics
+Decentralized: No platforms, no middlemen
+Scalable: Built for Zcash's abundant block space
+If you believe in digital artifacts on blockchain, if you've been frustrated by Bitcoin's high fees and complex workarounds, and if you want to be early to the next major inscription protocol—welcome to Zinc.
+
+The future of on-chain assets is being built on Zcash, and it's cleaner, cheaper, and more powerful than ever before.
+
+Getting Started with Zinc Protocol
+
+A comprehensive guide to deploying tokens, creating inscriptions, and utilizing the Zinc Protocol marketplace
+
+How Inscriptions Work
+
+Understanding Zinc's OP_RETURN approach vs. Bitcoin Ordinals
+
+
+
+
+Core Concepts
+How Inscriptions Work
+Understanding Zinc's OP_RETURN approach vs. Bitcoin Ordinals
+
+How Bitcoin Ordinals Work
+Bitcoin Ordinals inscribe data into the witness data of Taproot transactions. This approach:
+
+Uses inscription envelopes: OP_FALSE OP_IF ... OP_ENDIF
+Requires tracking satoshis (sats) individually
+Depends on ordinal theory to assign numbers to each sat
+Needs complex indexing to track which sat "holds" which inscription
+Was a clever workaround, but creates complexity and edge cases
+How Zinc Inscriptions Work
+Zinc takes a fundamentally cleaner approach using OP_RETURN outputs:
+
+
+Transaction Output[0]: OP_RETURN <binary_inscription_data>
+Why OP_RETURN?
+Purpose-built: OP_RETURN was designed for embedding data on-chain
+Clean and simple: No sat tracking, no ordinal theory needed
+Universally supported: Every Zcash node understands OP_RETURN
+Provably unspendable: The output can never be spent, ensuring permanence
+No protocol hacks: Uses Bitcoin Script as intended
+Key Difference
+Zinc inscriptions are tied to transaction IDs (txids), not individual satoshis. This makes everything simpler:
+
+NFT: "This txid is my NFT"
+Token: "This txid deployed the $ZINC token"
+No need to track which sat is where
+The Technical Advantage
+Ordinals required multiple protocol "patches" as edge cases emerged:
+
+Handling inscription transfers
+Dealing with cursed inscriptions
+Managing inscription splitting
+Preventing inscription burning
+Zinc designed these solutions from day one:
+
+Clean state machine for inscriptions
+Explicit transfer protocol
+Built-in marketplace mechanism
+No edge cases from sat tracking
+Why Zinc?
+
+Understanding the advantages of Zinc over Bitcoin Ordinals
+
+Protocol Overview
+
+Understanding the Zinc protocol framework and its sub-protocols
+
+On this page
+How Bitcoin Ordinals Work
+How Zinc Inscriptions Work
+Why OP_RETURN?
+Key Difference
+The Technical Advantage
+
+
+
+
+Core Concepts
+Protocol Overview
+Understanding the Zinc protocol framework and its sub-protocols
+
+Zinc isn't a single protocol—it's a framework with multiple sub-protocols, each serving a specific purpose.
+
+Protocol Architecture
+
+┌─────────────────────────────────────┐
+│         Zinc Protocol v1            │
+│  (Binary encoding on OP_RETURN)     │
+└─────────────────────────────────────┘
+                 │
+    ┌────────────┼────────────┐
+    ▼            ▼            ▼
+┌────────┐  ┌─────────┐  ┌──────────────┐
+│  Zinc  │  │ ZRC-20  │  │ Marketplace  │
+│  Core  │  │ Tokens  │  │   Trading    │
+└────────┘  └─────────┘  └──────────────┘
+Sub-Protocols
+Zinc Core Protocol
+NFT collections and digital artifacts
+
+ZRC-20 Protocol
+Fungible token standard
+
+Marketplace Protocol
+Decentralized trustless trading
+
+How Inscriptions Work
+
+Understanding Zinc's OP_RETURN approach vs. Bitcoin Ordinals
+
+Binary Encoding
+
+Understanding Zinc's compact binary encoding format
+
+
+
+
+Core Concepts
+Binary Encoding
+Understanding Zinc's compact binary encoding format
+
+Unlike Ordinals (which use JSON), Zinc uses compact binary encoding for efficiency.
+
+Why Binary?
+Ordinals inscription (JSON, ~150 bytes):
+
+
+{
+  "p": "brc-20",
+  "op": "mint",
+  "tick": "ordi",
+  "amt": "1000"
+}
+Zinc inscription (binary, ~45 bytes):
+
+
+[protocol_byte][op_byte][ticker_bytes][amount_bytes][max_bytes][limit_bytes][decimals_byte]
+Benefits
+60-70% smaller inscriptions
+Lower transaction fees
+More inscriptions per block
+Faster indexing (no JSON parsing)
+The Encoding Format
+Every Zinc inscription starts with:
+
+
+Byte 0: [Version (4 bits)][Protocol ID (4 bits)]
+Current version: 0x0 = v1
+
+Protocol IDs
+0x0 = Zinc Core (NFTs)
+0x1 = ZRC-20 (Tokens)
+0x2 = Marketplace
+Operations
+Operations (Byte 1, lower 4 bits):
+
+0x0 = Deploy
+0x1 = Mint/List
+0x2 = Transfer/Claim
+Example: ZRC-20 Deploy
+Let's decode a real ZRC-20 deploy inscription:
+
+
+Hex: 10 5a594e4300 00000000004c4b40 00000000000003e8 08
+Breaking it down:
+10              → Protocol: 0x1 (ZRC-20), Op: 0x0 (Deploy)
+5a594e4300      → Ticker: "ZINC" (4 chars + null terminator)
+00000000004c4b40 → Max supply: 5,000,000 (little-endian)
+00000000000003e8 → Mint limit: 1,000 (little-endian)
+08              → Decimals: 8
+Total size: 24 bytes
+
+JSON equivalent would be ~120 bytes:
+
+
+{"p":"zrc-20","op":"deploy","tick":"ZINC","max":"5000000","lim":"1000","dec":"8"}
+Size Comparison
+Format	Size	Savings
+JSON (BRC-20)	120 bytes	-
+Binary (ZRC-20)	24 bytes	80% smaller
+This efficiency means:
+
+Lower fees for users
+More capacity for inscriptions
+Faster processing for indexers
+Protocol Overview
+
+Understanding the Zinc protocol framework and its sub-protocols
+
+Priority Tips & Indexer Economics
+
+Sustainable indexer funding built into the protocol
+
+On this page
+Why Binary?
+Benefits
+The Encoding Format
+Protocol IDs
+Operations
+Example: ZRC-20 Deploy
+Size Comparison
+
+
+
+
+Core Concepts
+Priority Tips & Indexer Economics
+Sustainable indexer funding built into the protocol
+
+The Problem
+Ordinals faced a challenge: Who runs the indexers?
+
+Indexers are essential (track balances, validate operations)
+Running indexers is expensive (bandwidth, storage, compute)
+Ordinals relied on volunteers or centralized services
+The Zinc Solution: Built-In Indexer Tips
+Zinc includes optional priority tips in every inscription type:
+
+
+Optional Output[N]: Tip to indexer treasury
+  Value: <tip_amount_zatoshis>
+  Recipient: Indexer's treasury address
+How It Works
+User creates inscription (deploy, mint, transfer, list, claim)
+User optionally adds a tip output (e.g., 10,000 zats = $0.002)
+Indexers prioritize inscriptions with tips
+Sustainable funding model for infrastructure
+Example Transaction
+
+Inputs:
+  [0]: User's UTXO (1 ZEC)
+Outputs:
+  [0]: OP_RETURN inscription (0 value)
+  [1]: Tip to indexer (10,000 zats)
+  [2]: Change back to user (0.9999 ZEC)
+Why Tips Matter
+Ordinals ecosystem:
+Indexers often go offline
+Inconsistent data between indexers
+No economic incentive for infrastructure
+Zinc ecosystem:
+Sustainable indexer network
+Economic incentive for fast, reliable indexing
+Users pay only if they want priority
+Tips are optional but encouraged
+The Economics
+Cost per inscription:
+
+Zcash tx fee: 1,000 zats ($0.0002)
+Indexer tip: 10,000 zats (~$0.002)
+Total cost: ~$0.0022 per inscription
+Compare to Bitcoin:
+
+BTC tx fee: 10,000+ sats (~$7+)
+Ordinals inscription: 50,000+ sats (~$35+)
+Zinc is 10,000x cheaper while supporting infrastructure!
+
+Running an Indexer
+If you run an indexer, you can:
+
+Earn tips from users
+Provide priority processing
+Contribute to ecosystem sustainability
+Build value-added services
+Binary Encoding
+
+Understanding Zinc's compact binary encoding format
+
+Indexer Specification
+
+Comprehensive guide to Zinc Protocol's indexer architecture, validation rules, and operational behavior
+
+
+
+
+Core Concepts
+Indexer Specification
+Comprehensive guide to Zinc Protocol's indexer architecture, validation rules, and operational behavior
+
+The Zinc indexer processes Zcash blockchain data to track inscriptions across three protocols: ZRC-20 (fungible tokens), Zinc (NFTs), and Marketplace (peer-to-peer trading). This document specifies all indexer rules, validation logic, and operational behavior.
+
+Architecture
+Three-Stage Pipeline
+The indexer uses a clean separation of concerns with independent stages connected via tokio channels:
+
+
+┌──────────┐        ┌───────────┐        ┌─────────┐
+│ Fetcher  │───────>│ Validator │───────>│ Writer  │
+└──────────┘        └───────────┘        └─────────┘
+   Stage 1             Stage 2            Stage 3
+  Network IO      Parse & Validate     Database Writes
+Stage 1: Fetcher
+Location: src/indexer/fetcher.rs
+
+Responsibility: Network I/O only
+
+Operations:
+
+Fetch blocks from Zcash node via RPC
+Extract raw transaction data
+No validation or parsing
+Output: Raw Block structs to validator channel
+Stage 2: Validator
+Location: src/indexer/validation.rs, src/indexer/validator.rs
+
+Responsibility: Parse and validate inscriptions
+
+Operations:
+
+Parse OP_RETURN outputs for inscriptions
+Validate inscription structure and rules
+Database reads only (check balances, verify ownership)
+No state mutations
+Output: ValidatedBlock structs containing accepted/rejected inscriptions
+Stage 3: Writer
+Location: src/indexer/writer.rs
+
+Responsibility: All database writes
+
+Operations:
+
+Batch write inscriptions in single transaction per block
+Update token balances, NFT ownership
+Handle marketplace state changes
+Manage reorgs (3-block rolling window)
+Allocate inscription numbers atomically
+Output: Updated database state
+Reorg Handling
+Configuration: 3-block rolling window (max_reorg_depth = 3)
+
+Process:
+
+Detect reorg: incoming block's previous_hash doesn't match current tip
+Roll back: Mark blocks/transactions/inscriptions in window as non-canonical
+Release locks: Remove soft-locks on marketplace assets
+Find common ancestor: Walk back to last matching block
+Replay: Index new canonical chain from common ancestor
+Finalize: Blocks with 3+ confirmations marked finalized (permanent)
+Finalization Rule: Inscriptions are considered permanent after 3 confirmations.
+
+Transaction Filtering
+Location: src/indexer/validation.rs:95-98
+
+Transactions are skipped if:
+
+Is coinbase transaction
+Is shielded transaction (has shielded inputs or outputs)
+Does not contain OP_RETURN output
+Only transparent P2PKH transactions with OP_RETURN outputs are indexed.
+
+Inscription Number Assignment
+Location: src/indexer/writer.rs
+
+Rules:
+
+Inscription numbers allocated sequentially starting from 0
+Assignment happens in Stage 3 (Writer) during database commit
+Multiple inscriptions can temporarily have same number during reorg
+UNIQUE INDEX ensures only ONE inscription per number can be canonical
+Numbers are permanent: if inscription becomes non-canonical, number is not reassigned
+States:
+
+pending: Mempool, provisional number
+in_block: Confirmed but not finalized
+finalized: 3+ confirmations, permanent
+dropped: Reorged or double-spent, non-canonical
+Validation Rules by Inscription Type
+ZRC-20 Deploy
+Location: src/indexer/validator.rs:88-106
+
+Purpose: Create new fungible token
+
+Required Fields:
+
+
+{
+  "p": "zrc-20",
+  "op": "deploy",
+  "tick": "ZINC",
+  "max": 21000000,
+  "lim": 1000,
+  "dec": 8
+}
+Validation Rules:
+
+Ticker MUST be 4-6 characters
+Ticker MUST be uppercase alphanumeric only [A-Z0-9]
+Ticker MUST NOT already exist (checked against canonical deploys only)
+Max supply MUST be > 0
+Mint limit MUST be > 0 and ≤ max supply
+Decimals MUST be 0-18 (inclusive)
+Deployer address REQUIRED (extracted from transaction sender)
+Rejection Reasons:
+
+TickerAlreadyExists: Ticker already deployed in canonical chain
+InvalidTicker: Ticker contains invalid characters
+TickerTooShort: Ticker < 4 characters
+TickerTooLong: Ticker > 6 characters
+On Success:
+
+Token record created in tokens table
+Deployer recorded
+total_minted initialized to 0
+ZRC-20 Mint
+Location: src/indexer/validator.rs:108-144
+
+Purpose: Mint tokens from deployed token supply
+
+Required Fields:
+
+
+{
+  "p": "zrc-20",
+  "op": "mint",
+  "tick": "ZINC",
+  "amt": 1000
+}
+Validation Rules:
+
+Token MUST exist (checked against canonical deploys)
+Amount MUST be > 0
+Amount MUST be ≤ token's mint_limit
+total_minted + amount MUST NOT exceed max_supply
+Minter address REQUIRED (becomes token recipient)
+Rejection Reasons:
+
+TokenNotFound: Ticker not deployed or not canonical
+InvalidMintLimit: Amount exceeds per-mint limit
+MaxSupplyReached: Would exceed maximum supply
+On Success:
+
+Token balance increased for minter address
+total_minted incremented
+Balance record created/updated in token_balances
+ZRC-20 Transfer
+Location: src/indexer/validator.rs:146-195
+
+Purpose: Transfer tokens between addresses
+
+Required Fields:
+
+
+{
+  "p": "zrc-20",
+  "op": "transfer",
+  "tick": "ZINC",
+  "amt": 100,
+  "to": "t1..."
+}
+Validation Rules:
+
+Token MUST exist (canonical)
+Sender address REQUIRED (from transaction input)
+Amount MUST be > 0
+Sender MUST have sufficient available balance:
+Available balance = total_balance - locked_amount
+Locked tokens from active marketplace listings cannot be transferred
+Recipient address determined from:
+Explicit "to" field in inscription (preferred)
+Transaction output recipient (fallback)
+At least ONE must be present
+Recipient MUST be valid P2PKH address (t1...)
+Important: Locked tokens (from active listings) are excluded from available balance.
+
+Zinc NFT Mint
+Location: src/indexer/validator.rs:199-211
+
+Purpose: Create unique NFT with content reference
+
+Required Fields:
+
+
+{
+  "p": "zinc",
+  "op": "mint",
+  "content": {
+    "protocol": "ipfs",
+    "data": "QmXgqKTbzdh83pQtKFb19SpMCpDDcKR2ujqk3pKph9aCNF"
+  },
+  "mime_type": "image/png"
+}
+Content Protocol Validation:
+
+Protocol	Validation Rule	Example
+IPFS	Must be valid CIDv0: 46 chars, starts with "Qm", valid base58	QmXgqKTbzdh83pQtKFb19SpMCpDDcKR2ujqk3pKph9aCNF
+Arweave	Must be 43-char base64url transaction ID	xYz123456789012345678901234567890123456
+HTTP/HTTPS	Must start with http:// or https://, max 74 bytes	https://example.com/image.png
+PlainText	UTF-8 text, max 74 bytes	Hello, World!
+Supported MIME Types:
+
+image/png, image/jpeg, image/gif, image/svg+xml
+video/mp4, audio/mp3
+text/plain, application/pdf
+On Success:
+
+NFT record created in nfts table
+NFT ID = transaction hash (unique identifier)
+Owner set to minter address
+Zinc NFT Transfer
+Location: src/indexer/validator.rs:213-265
+
+Purpose: Transfer NFT ownership
+
+Required Fields:
+
+
+{
+  "p": "zinc",
+  "op": "transfer",
+  "id": "abc123...",
+  "to": "t1..."
+}
+Validation Rules:
+
+NFT MUST exist (checked against canonical mints)
+NFT ID MUST be 64-character hex string (transaction hash)
+Sender MUST be current NFT owner
+NFT MUST NOT be locked by active marketplace listing
+Recipient address required (from inscription or tx output)
+Recipient MUST be valid P2PKH address
+Marketplace Listing
+Location: src/indexer/validator.rs:268-376
+
+Purpose: Create peer-to-peer listing for tokens or NFTs
+
+Required Fields:
+
+
+{
+  "p": "marketplace",
+  "op": "listing",
+  "asset_id": "...",
+  "amount": 1,
+  "price": 100000000,
+  "nonce": 1,
+  "expiry_height": 4294967295
+}
+Validation Rules:
+
+Price MUST be > 0
+Amount MUST be > 0
+For NFTs: Amount MUST be exactly 1
+Nonce MUST be unique per seller (prevents replay attacks)
+Seller address REQUIRED
+Asset-Specific Validation:
+
+For NFTs:
+
+Seller MUST own the NFT
+NFT MUST NOT already be locked by another listing
+For Tokens:
+
+Seller MUST have sufficient available balance ≥ amount
+Available balance = balance - locked_amount
+Lock UTXO:
+
+Lock output created at index 1: {listing_txid}:1
+This output MUST be spent to claim or cancel listing
+Lock prevents double-listing same asset
+On Success:
+
+Listing record created with status active
+Soft-lock applied (NFT in locked_nfts or Token in locked_token_balances)
+Lock UTXO recorded: {listing_txid}:1
+Asset becomes unavailable for transfer until listing resolved
+Marketplace Claim
+Location: src/indexer/validation.rs:481-591
+
+Purpose: Purchase listed asset by spending lock UTXO
+
+Required Fields:
+
+
+{
+  "p": "marketplace",
+  "op": "claim",
+  "listing_txid": "..."
+}
+Critical Security Validation:
+
+Listing MUST exist and be active
+Listing MUST NOT be expired
+Lock UTXO MUST NOT be already spent
+Transaction structure validation:
+Input[0] MUST spend lock UTXO (listing_txid:1)
+Input[1] MUST provide buyer address
+Transaction MUST have at least 2 outputs
+Payment validation (CRITICAL):
+Output[1] value MUST equal listing price exactly
+Output[1] MUST pay to seller address
+Anti-fraud: Buyer CANNOT be seller (self-dealing prevention)
+Ownership re-verification:
+For NFTs: Seller MUST still own NFT at claim time
+For Tokens: Seller MUST have available balance ≥ listing amount
+Transaction Structure Example:
+
+
+Inputs:
+  [0] = Lock UTXO from listing ({listing_txid}:1) ← REQUIRED
+  [1] = Buyer's payment UTXO ← buyer address extracted
+  [2+] = Additional UTXOs for fees
+Outputs:
+  [0] = OP_RETURN <claim inscription>
+  [1] = Payment to seller (exact price) ← VALIDATED
+  [2] = Optional tip to treasury
+  [3+] = Change to buyer
+On Success:
+
+Listing status changed to claimed
+Soft-lock released
+For NFTs: Ownership transferred to buyer
+For Tokens: Balance transferred seller → buyer
+Marketplace Cancel
+Location: src/indexer/validator.rs:411-439
+
+Purpose: Cancel active listing (seller-initiated)
+
+Required Fields:
+
+
+{
+  "p": "marketplace",
+  "op": "cancel",
+  "listing_txid": "..."
+}
+Validation Rules:
+
+Listing MUST exist
+Listing status MUST be active
+Lock UTXO MUST NOT be already spent
+Seller address REQUIRED (only seller can cancel own listing)
+On Success:
+
+Listing status changed to cancelled
+Soft-lock released
+Asset becomes available for transfer/re-listing
+Note: Nonce is NOT released (one-time use, prevents nonce exhaustion attacks)
+Address Validation
+Location: src/indexer/validation.rs:271-299
+
+Supported Address Types:
+
+✓ P2PKH addresses: t1... (mainnet)
+✗ P2SH addresses: t3... (NOT supported)
+✗ Shielded addresses (NOT supported)
+Extraction Methods:
+
+Sender: Derived from first transaction input (Input[0])
+Recipient:
+Primary: Explicit address in inscription JSON ("to" field)
+Fallback: Transaction output recipient
+At least one MUST be present for transfers
+Binary Serialization
+Location: src/indexer/validation.rs:191-208
+
+Requirement: ALL inscriptions MUST successfully serialize to binary format before acceptance.
+
+Process:
+
+Parse JSON inscription
+Validate structure and rules
+Attempt binary serialization
+Embed binary in OP_RETURN output
+Failure Handling:
+
+Serialization failure = immediate rejection
+Rejection reason: SerializationFailed
+Inscription never written to database
+Size Limit: 80 bytes (Zcash OP_RETURN maximum)
+
+Tip Handling
+Location: src/indexer/validation.rs:178-188
+
+Treasury Address: t1ZcnUqva1dCydNPFd3EH8b7Scmz1V5oh1N
+
+Tip Structure:
+
+Tips extracted from transaction Output[1] if recipient matches treasury
+Mandatory minimum: 150,000 zatoshis (0.0015 ZEC)
+Tips can be HIGHER during high market demand
+Tips stored in inscriptions.tip_amount field
+Enforcement:
+
+Minimum tip ENFORCED during validation
+Transactions without proper tip are REJECTED
+Higher tips are accepted and recorded
+Purpose: Protocol sustainability and spam prevention
+
+Database Write Ordering
+Location: src/indexer/writer.rs
+
+Per-Block Write Transaction (atomic):
+
+Insert/update block record
+Insert/update transactions
+Allocate inscription numbers (increment global counter)
+Insert inscriptions (both accepted AND rejected)
+Apply state changes:
+Update token balances
+Update NFT ownership
+Create/update marketplace listings
+Apply/release soft-locks
+Update chain tip in chain_state
+Commit transaction
+Atomicity: If any step fails, entire block is rolled back.
+
+Security Properties
+Attack Prevention
+Double-spend: Lock UTXO prevents double-claim
+Self-dealing: Buyer cannot be seller in claims
+Replay: Nonces prevent listing replay
+Race conditions: Ownership re-verified at claim time
+Negative balances: Balance checks prevent overdraw
+Trust Assumptions
+Zcash consensus is honest (longest chain is valid)
+RPC node provides accurate data
+Database transactions provide ACID guarantees
+Constants
+
+// Amounts (zatoshis)
+pub const DUST_AMOUNT: u64 = 10_000;           // OP_RETURN output value
+pub const MANDATORY_TIP: u64 = 150_000;        // Minimum tip (0.0015 ZEC)
+// Addresses
+pub const TREASURY_ADDRESS: &str = "t1ZcnUqva1dCydNPFd3EH8b7Scmz1V5oh1N";
+// Limits
+pub const MAX_OP_RETURN_SIZE: usize = 80;      // Zcash limit (bytes)
+pub const MAX_REORG_DEPTH: usize = 3;          // Blocks before finalization
+// Expiry
+pub const NO_EXPIRY: u32 = 4294967295;         // u32::MAX = never expires
+// Magic bytes
+pub const MAGIC_BYTE: u8 = 0x7A;               // 'z'
+Document Version: 1.0 Last Updated: January 2025 Maintained By: Zinc Protocol Team
+
+Priority Tips & Indexer Economics
+
+Sustainable indexer funding built into the protocol
+
+Zinc Core - NFTs
+
+Create unique digital artifacts (NFTs) on Zcash
+
+
+
+
+Protocol Reference
+Zinc Core - NFTs
+Create unique digital artifacts (NFTs) on Zcash
+
+Protocol ID: 0x00
+
+The Zinc Core protocol enables the creation of unique digital artifacts (NFTs) on Zcash.
+
+Operations
+Operation	Opcode	Data Fields	What It Does	Example
+Deploy	0x00	• Collection name	Creates an NFT collection namespace	Deploy "ZcashApes" collection.
+Txid = collection ID
+Mint	0x01	• Collection txid
+• Content (image/JSON/text)	Creates a single NFT in the collection	Mint "ZcashApe #1" in collection abc123...
+Txid = NFT ID
+Key Points
+NFT identity = transaction txid (simple, no sat tracking)
+Collection txid links all NFTs together
+Content can be embedded or referenced via URL/IPFS
+Example: Creating an NFT Collection
+Deploy a collection:
+
+Create a transaction with OP_RETURN containing collection metadata
+The transaction ID becomes your collection ID
+Mint NFTs:
+
+Reference the collection txid
+Include NFT content (image data, JSON metadata, or reference)
+The transaction ID becomes the unique NFT ID
+Transfer ownership:
+
+Use the marketplace protocol for trustless trading
+Or transfer directly between addresses
+Indexer Specification
+
+Comprehensive guide to Zinc Protocol's indexer architecture, validation rules, and operational behavior
+
+ZRC-20 - Fungible Tokens
+
+Fungible token standard for Zcash (like BRC-20, but better)
+
+
+
+Protocol Reference
+ZRC-20 - Fungible Tokens
+Fungible token standard for Zcash (like BRC-20, but better)
+
+Protocol ID: 0x01
+
+The ZRC-20 protocol provides a fungible token standard for Zcash, similar to BRC-20 but with significant improvements.
+
+Operations
+Operation	Opcode	Data Fields	What It Does	Example
+Deploy	0x00	• Ticker (4 chars)
+• Max supply (u64)
+• Mint limit (u64)
+• Decimals (u8)	Creates a new fungible token	Deploy $ZINC:
+• Max: 21M
+• Limit: 100/mint
+• Decimals: 8
+Txid = token ID
+Mint	0x01	• Deploy txid
+• Amount (u64)	Claims tokens from total supply	Mint 100 $ZINC
+Sender receives tokens
+Indexer validates against limits
+Transfer	0x02	• Deploy txid
+• Amount (u64)
+• Recipient address	Sends tokens to another address	Send 100 $ZINC to t1xyz...
+ONE transaction (vs BRC-20's two-step)
+Key Differences from BRC-20
+1-Step Transfers
+ZRC-20 inscribes + sends in ONE transaction. BRC-20 requires two steps:
+
+Inscribe transfer
+Send the inscription
+This makes ZRC-20 simpler and less error-prone.
+
+Binary Encoding
+ZRC-20 uses compact binary encoding, making inscriptions 60-70% smaller than JSON-based BRC-20.
+
+Explicit Recipients
+No ambiguity about who receives tokens - the recipient address is specified directly in the transfer inscription.
+
+Example: Creating a Token
+Deploy Token
+
+Hex: 10 5a594e4300 00000000004c4b40 00000000000003e8 08
+Breaking it down:
+10              → Protocol: 0x1 (ZRC-20), Op: 0x0 (Deploy)
+5a594e4300      → Ticker: "ZINC" (4 chars + null terminator)
+0000000001406F40 → Max supply: 21,000,000 (little-endian)
+0000000000000046 → Mint limit: 100 (little-endian)
+08              → Decimals: 8
+Total size: 24 bytes
+
+JSON equivalent would be ~120 bytes:
+
+
+{"p":"zrc-20","op":"deploy","tick":"ZINC","max":"21000000","lim":"100","dec":"8"}
+Zinc Core - NFTs
+
+Create unique digital artifacts (NFTs) on Zcash
+
+Marketplace - Trustless Trading
+
+Built-in decentralized marketplace with atomic swaps
+
+
+
+Protocol Reference
+Marketplace - Trustless Trading
+Built-in decentralized marketplace with atomic swaps
+
+Protocol ID: 0x02
+
+The Marketplace protocol enables trustless, decentralized trading of NFTs and tokens—no centralized platform needed!
+
+This is where Zinc really innovates beyond Ordinals.
+
+Operations
+Operation	Opcode	Data Fields	What It Does	Transaction Structure
+List	0x00	• Asset ID (txid)
+• Amount (u64)
+• Price (zatoshis)
+• Nonce (u64)
+• Expiry height (u32)	Seller creates listing	Outputs:
+[0] OP_RETURN inscription
+[1] Lock UTXO (10k zats)
+[2] Optional tip
+[3] Change
+Claim	0x01	• Listing txid	Buyer purchases asset	Inputs:
+[0] Lock UTXO (with preimage)
+[1+] Buyer payment
+Outputs:
+[0] OP_RETURN inscription
+[1] Payment to seller
+[2] Optional tip
+[3] Change
+How the Marketplace Cryptography Works
+The marketplace uses a P2SH (Pay-to-Script-Hash) lock puzzle—a cryptographic mechanism that eliminates the need for escrow, platform fees, or trusted third parties.
+
+The Lock Puzzle Mechanism
+Step 1: Seller Creates Listing
+When a seller lists an asset, the transaction creates a special Lock UTXO at Output[1]:
+
+
+Lock UTXO (10,000 zatoshis)
+├─ ScriptPubKey: OP_HASH160 <script_hash> OP_EQUAL
+└─ Locked by cryptographic puzzle
+How the lock is generated:
+
+Compute the Preimage (publicly derivable from listing inscription):
+
+
+preimage = asset_id (32 bytes) || 0x00 || price (8 bytes LE) || 0x00 || nonce (8 bytes LE)
+Total: 50 bytes
+Hash the Preimage (OP_HASH256):
+
+
+lock_hash = SHA256(SHA256(preimage))
+Result: 32-byte hash
+Create Redeem Script:
+
+
+OP_HASH256 <lock_hash> OP_EQUALVERIFY OP_TRUE
+Hash the Redeem Script (HASH160):
+
+
+script_hash = RIPEMD160(SHA256(redeem_script))
+Result: 20-byte hash
+Create P2SH ScriptPubKey:
+
+
+OP_HASH160 <script_hash> OP_EQUAL
+Step 2: Buyer Claims Listing
+When a buyer wants to purchase, they build a claim transaction:
+
+Transaction Inputs:
+
+
+Input[0]: Lock UTXO from listing
+  ├─ ScriptSig: <preimage> <redeem_script>
+  └─ Proves: Buyer knows asset_id, price, and nonce
+Input[1]: Buyer's payment UTXO (e.g., 5 ZEC)
+Input[2]: Buyer's payment UTXO (e.g., 3 ZEC)
+... (as many as needed to cover price + fees)
+Transaction Outputs:
+
+
+Output[0]: OP_RETURN with claim inscription (0 value)
+Output[1]: Payment to seller (EXACT price from listing)
+Output[2]: Optional tip to indexer (e.g., 10,000 zats)
+Output[3]: Change back to buyer (leftover funds)
+Example: Complete Flow
+Scenario: Alice lists her "ZcashApe #42" NFT for 10 ZEC
+
+1. Alice creates listing:
+
+
+Inscription: LIST asset=abc123..., amount=1, price=1,000,000,000 zats, nonce=42, expiry=3,130,000
+Lock UTXO: 10,000 zats locked with hash puzzle
+Anyone can see: "ZcashApe #42 for sale, 10 ZEC, nonce 42"
+2. Bob wants to buy:
+
+
+Bob derives preimage: abc123... || 1,000,000,000 || 42
+Bob builds claim transaction:
+  - Input[0]: Lock UTXO (proves he knows listing details)
+  - Input[1]: Bob's 12 ZEC UTXO
+  - Output[0]: Claim inscription
+  - Output[1]: 10 ZEC to Alice
+  - Output[2]: 10,000 zats tip to indexer
+  - Output[3]: 1.99 ZEC change to Bob
+3. Network validates:
+
+
+✓ Lock UTXO unlocked correctly (preimage hashes match)
+✓ Payment to Alice is exactly 10 ZEC
+✓ Transaction structure is valid
+→ Transaction confirms!
+4. Result:
+
+
+✓ Bob owns ZcashApe #42 (indexer updates ownership)
+✓ Alice received 10 ZEC
+✓ Indexer earned 10,000 zats tip
+✓ Everything settled atomically in ONE transaction
+✓ No escrow, no platform, no fees
+Why This Is Trustless
+Problem with centralized marketplaces:
+
+Seller lists NFT on Magic Eden
+Magic Eden controls the listing
+Magic Eden takes 2-5% fee
+Magic Eden can delist at any time
+Magic Eden can front-run trades
+Need to trust Magic Eden
+Zinc marketplace solution:
+
+No intermediary: Lock UTXO is controlled by cryptography, not a platform
+No cancellation: Once listed, seller cannot cancel (UTXO is locked)
+No front-running: First valid claim transaction wins (blockchain ordering)
+Atomic settlement: Payment and asset transfer happen together or not at all
+No fees: Optional tips to indexers instead of mandatory platform fees
+Verifiable: Every step is on-chain and auditable
+Security Properties
+Prevents Seller Fraud:
+
+Seller can't cancel listing after buyer commits
+Lock UTXO ensures listing is genuine
+Price is hardcoded in preimage (can't be changed)
+Prevents Buyer Fraud:
+
+Buyer must pay exact price (verified by nodes)
+Can't underpay or claim without paying
+Payment goes directly to seller's address
+Prevents Replay Attacks:
+
+Nonce makes each listing unique
+Can't reuse same Lock UTXO for different listings
+Prevents Double-Claims:
+
+Lock UTXO can only be spent once
+First valid claim transaction confirms
+Later claims are rejected (UTXO already spent)
+Comparison: Zinc vs Bitcoin Ordinals Marketplaces
+Feature	Bitcoin Ordinals (Magic Eden, Unisat)	Zinc Marketplace
+Architecture	Centralized platform	Protocol-level (on-chain)
+Escrow	Platform holds assets	Cryptographic lock (trustless)
+Fees	2-5% platform fee	0% (optional indexer tips)
+Cancellation	Seller can cancel anytime	Cannot cancel (UTXO locked)
+Custody	Platform controls listing	Blockchain controls via P2SH
+Front-running	Possible by platform	Impossible (blockchain ordering)
+Verification	Trust platform	Verify on-chain
+Downtime Risk	Platform can go offline	Always available (blockchain)
+Atomic Swaps	No (multi-step process)	Yes (single transaction)
+Bottom Line: Zinc marketplace = truly decentralized, trustless, fee-free trading powered by cryptography, not platforms.
+
+ZRC-20 - Fungible Tokens
+
+Fungible token standard for Zcash (like BRC-20, but better)
