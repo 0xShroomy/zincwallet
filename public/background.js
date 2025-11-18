@@ -117,8 +117,14 @@ let walletState = {
   isLocked: true,
   address: '',
   balance: 0,
-  network: 'testnet'
+  network: 'testnet' // Default to testnet for development
 };
+
+// Set lightwalletd client to testnet
+if (typeof self.LightwalletdClient !== 'undefined') {
+  self.LightwalletdClient.setNetwork('testnet');
+  console.log('[Background] Network set to TESTNET for development');
+}
 
 /**
  * Initialize wallet state from storage
