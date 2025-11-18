@@ -4,12 +4,13 @@
 console.log('[Background] Starting...');
 
 // ============================================================================
-// LOAD BIP39 LIBRARY
+// LOAD BIP39 LIBRARY AND ZCASH KEYS
 // ============================================================================
 
-// Import BIP39 library (loaded via script tag in manifest)
+// Import BIP39 library and Zcash address derivation
 /* global importScripts */
 importScripts('bip39.js');
+importScripts('zcash-keys.js');
 
 // ============================================================================
 // CRYPTO UTILITIES
@@ -179,14 +180,16 @@ async function handleUnlockWallet(data) {
     // Decrypt seed
     const mnemonic = await decrypt(stored.encryptedSeed, password);
     
-    // TODO: Derive address from mnemonic (next step)
-    const address = 't1TestAddressWillImplementNext';
+    // Derive Zcash transparent address from mnemonic
+    const { address, derivationPath } = await self.ZcashKeys.deriveAddress(mnemonic, 0, 0);
     
     // Update state
     walletState.isLocked = false;
     walletState.address = address;
     
     console.log('[Background] Wallet unlocked successfully');
+    console.log('[Background] Address:', address);
+    console.log('[Background] Derivation path:', derivationPath);
     
     return {
       success: true,
@@ -226,14 +229,21 @@ async function handleImportWallet(data) {
     const encryptedSeed = await encrypt(mnemonic.trim(), password);
     await chrome.storage.local.set({ encryptedSeed });
     
+    // Derive address
+    const { address, derivationPath } = await self.ZcashKeys.deriveAddress(mnemonic.trim(), 0, 0);
+    
     // Update state
     walletState.isInitialized = true;
     walletState.isLocked = false;
+    walletState.address = address;
     
     console.log('[Background] Wallet imported successfully');
+    console.log('[Background] Address:', address);
+    console.log('[Background] Derivation path:', derivationPath);
     
     return {
-      success: true
+      success: true,
+      address: address
     };
   } catch (error) {
     console.error('[Background] Wallet import failed:', error);

@@ -15,33 +15,36 @@
     "package": "pnpm build && node scripts/package.js"
   },
   "dependencies": {
+    "@noble/hashes": "^2.0.1",
+    "@scure/bip32": "^2.0.1",
+    "@scure/bip39": "^2.0.1",
+    "bip32": "^4.0.0",
+    "bip39": "^3.1.0",
+    "bitcoinjs-lib": "^6.1.5",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "bip39": "^3.1.0",
-    "bip32": "^4.0.0",
-    "bitcoinjs-lib": "^6.1.5",
     "webextension-polyfill": "^0.10.0",
     "zustand": "^4.4.7"
   },
   "devDependencies": {
+    "@types/bip39": "^3.0.0",
     "@types/node": "^20.10.6",
     "@types/react": "^18.2.46",
     "@types/react-dom": "^18.2.18",
     "@types/webextension-polyfill": "^0.10.7",
-    "@types/bip39": "^3.0.0",
     "@typescript-eslint/eslint-plugin": "^6.17.0",
     "@typescript-eslint/parser": "^6.17.0",
     "@vitejs/plugin-react": "^4.2.1",
     "@vitest/coverage-v8": "^1.1.1",
     "autoprefixer": "^10.4.16",
     "eslint": "^8.56.0",
+    "happy-dom": "^12.10.3",
     "postcss": "^8.4.32",
     "tailwindcss": "^3.4.0",
     "typescript": "^5.3.3",
     "vite": "^5.0.10",
     "vite-plugin-web-extension": "^4.1.0",
-    "vitest": "^1.1.1",
-    "happy-dom": "^12.10.3"
+    "vitest": "^1.1.1"
   },
   "keywords": [
     "zcash",
