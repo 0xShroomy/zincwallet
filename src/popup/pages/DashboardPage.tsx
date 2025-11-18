@@ -22,6 +22,10 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
 
   async function handleSync() {
     setIsRefreshing(true);
+    
+    // Track start time for minimum spinner duration
+    const startTime = Date.now();
+    
     try {
       await browser.runtime.sendMessage({
         type: 'WALLET_ACTION',
@@ -30,6 +34,14 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
       });
       onUpdate();
     } finally {
+      // Ensure spinner shows for at least 1 second for better UX
+      const elapsed = Date.now() - startTime;
+      const minDuration = 1000; // 1 second
+      
+      if (elapsed < minDuration) {
+        await new Promise(resolve => setTimeout(resolve, minDuration - elapsed));
+      }
+      
       setIsRefreshing(false);
     }
   }

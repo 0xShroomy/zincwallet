@@ -329,6 +329,14 @@ async function handleRefreshBalance() {
       balanceZEC: (result.balance / 100000000).toFixed(8),
     });
     
+    // Note about zero balance
+    if (result.balance === 0) {
+      console.log('[Background] Balance is 0 ZEC - this could mean:');
+      console.log('  1. Address has no funds (new wallet)');
+      console.log('  2. CORS restrictions prevented API query');
+      console.log('  3. API services are temporarily unavailable');
+    }
+    
     return {
       success: true,
       balance: walletState.balance,
@@ -336,6 +344,7 @@ async function handleRefreshBalance() {
     };
   } catch (error) {
     console.error('[Background] Balance refresh failed:', error);
+    // Don't throw - return current balance gracefully
     return {
       success: false,
       error: error.message,

@@ -73,27 +73,37 @@ self.LightwalletdClient = (function() {
    */
   async function getFallbackBalance(address) {
     try {
-      console.log('[Lightwalletd] Trying fallback API...');
+      console.log('[Lightwalletd] Trying fallback API (blockchair.com)...');
       
-      // Use zcha.in explorer API
-      const response = await fetch(`https://api.zcha.in/v2/mainnet/accounts/${address}`);
+      // Try blockchair API (has CORS support)
+      const response = await fetch(`https://api.blockchair.com/zcash/dashboards/address/${address}`);
       
       if (!response.ok) {
-        throw new Error('Fallback API failed');
+        throw new Error('Blockchair API failed');
       }
       
       const data = await response.json();
       
-      console.log('[Lightwalletd] Fallback result:', data);
+      console.log('[Lightwalletd] Blockchair result:', data);
       
-      return {
-        balance: data.balance || 0,
-        transactions: data.totalRecv ? 1 : 0,
-      };
+      if (data.data && data.data[address]) {
+        const addrData = data.data[address].address;
+        return {
+          balance: addrData.balance || 0,
+          transactions: addrData.transaction_count || 0,
+        };
+      }
+      
+      return { balance: 0, transactions: 0 };
     } catch (error) {
       console.error('[Lightwalletd] Fallback also failed:', error);
       
       // Return zero balance if all methods fail
+      // NOTE: Due to CORS restrictions, direct blockchain queries from browser
+      // extensions are limited. In production, you'd use a backend proxy.
+      console.warn('[Lightwalletd] All balance queries failed - returning 0');
+      console.warn('[Lightwalletd] This is expected for new addresses or CORS restrictions');
+      
       return {
         balance: 0,
         transactions: 0,
