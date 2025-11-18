@@ -18,9 +18,19 @@ export default defineConfig({
       additionalInputs: ['src/popup/index.html'],
       disableAutoLaunch: true,
       skipManifestValidation: true,
-      htmlViteConfig: {
+      scriptViteConfig: {
         build: {
-          cssCodeSplit: true,
+          cssCodeSplit: false,
+          minify: false,
+          rollupOptions: {
+            output: {
+              inlineDynamicImports: true,
+              assetFileNames: () => {
+                // Don't output CSS for scripts (content/background)
+                return 'ignored-[name][extname]';
+              },
+            },
+          },
         },
       },
     }),
@@ -39,19 +49,9 @@ export default defineConfig({
     outDir: 'dist',
     copyPublicDir: true,
     sourcemap: process.env.NODE_ENV === 'development',
-    cssCodeSplit: true,
     rollupOptions: {
       input: {
         popup: 'src/popup/index.html',
-      },
-      output: {
-        assetFileNames: (assetInfo) => {
-          // Prevent CSS from being bundled with content script
-          if (assetInfo.name?.includes('content')) {
-            return 'content/[name][extname]';
-          }
-          return 'assets/[name]-[hash][extname]';
-        },
       },
     },
   },
