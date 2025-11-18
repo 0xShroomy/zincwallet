@@ -1,0 +1,233 @@
+Protocol Documentation
+Table of Contents
+compact_formats.proto
+MCompactBlock
+MCompactOutput
+MCompactSpend
+MCompactTx
+service.proto
+MBlockID
+MBlockRange
+MChainSpec
+MDuration
+MEmpty
+MLightdInfo
+MPingResponse
+MRawTransaction
+MSendResponse
+MTransparentAddressBlockFilter
+MTxFilter
+SCompactTxStreamer
+Scalar Value Types
+compact_formats.proto	Top
+CompactBlock
+CompactBlock is a packaging of ONLY the data from a block that's needed to:
+
+1. Detect a payment to your shielded Sapling address
+
+2. Detect a spend of your shielded Sapling notes
+
+3. Update your witnesses to generate new Sapling spend proofs.
+
+Field	Type	Label	Description
+protoVersion	uint32		
+the version of this wire format, for storage
+
+height	uint64		
+the height of this block
+
+hash	bytes		
+
+prevHash	bytes		
+
+time	uint32		
+
+header	bytes		
+(hash, prevHash, and time) OR (full header)
+
+vtx	CompactTx	repeated	
+compact transactions from this block
+
+CompactOutput
+Field	Type	Label	Description
+cmu	bytes		
+
+epk	bytes		
+
+ciphertext	bytes		
+
+CompactSpend
+Field	Type	Label	Description
+nf	bytes		
+
+CompactTx
+Index and hash will allow the receiver to call out to chain
+
+explorers or other data structures to retrieve more information
+
+about this transaction.
+
+Field	Type	Label	Description
+index	uint64		
+
+hash	bytes		
+
+fee	uint32		
+The transaction fee: present if server can provide. In the case of a stateless server and a transaction with transparent inputs, this will be unset because the calculation requires reference to prior transactions. in a pure-Sapling context, the fee will be calculable as: valueBalance + (sum(vPubNew) - sum(vPubOld) - sum(tOut))
+
+spends	CompactSpend	repeated	
+
+outputs	CompactOutput	repeated	
+
+service.proto	Top
+BlockID
+A BlockID message contains identifiers to select a block: a height or a
+
+hash. Specification by hash is not implemented, but may be in the future.
+
+Field	Type	Label	Description
+height	uint64		
+
+hash	bytes		
+
+BlockRange
+BlockRange specifies a series of blocks from start to end inclusive.
+
+Both BlockIDs must be heights; specification by hash is not yet supported.
+
+Field	Type	Label	Description
+start	BlockID		
+
+end	BlockID		
+
+ChainSpec
+Chainspec is a placeholder to allow specification of a particular chain fork.
+
+Duration
+Duration is currently used only for testing, so that the Ping rpc
+
+can simulate a delay, to create many simultaneous connections. Units
+
+are microseconds.
+
+Field	Type	Label	Description
+intervalUs	int64		
+
+Empty
+Empty is for gRPCs that take no arguments, currently only GetLightdInfo.
+
+LightdInfo
+LightdInfo returns various information about this lightwalletd instance
+
+and the state of the blockchain.
+
+Field	Type	Label	Description
+version	string		
+
+vendor	string		
+
+taddrSupport	bool		
+
+chainName	string		
+
+saplingActivationHeight	uint64		
+
+consensusBranchId	string		
+
+blockHeight	uint64		
+
+PingResponse
+PingResponse is used to indicate concurrency, how many Ping rpcs
+
+are executing upon entry and upon exit (after the delay).
+
+Field	Type	Label	Description
+entry	int64		
+
+exit	int64		
+
+RawTransaction
+RawTransaction contains the complete transaction data. It also optionally includes
+
+the block height in which the transaction was included
+
+Field	Type	Label	Description
+data	bytes		
+
+height	uint64		
+
+SendResponse
+A SendResponse encodes an error code and a string. It is currently used
+
+only by SendTransaction(). If error code is zero, the operation was
+
+successful; if non-zero, it and the message specify the failure.
+
+Field	Type	Label	Description
+errorCode	int32		
+
+errorMessage	string		
+
+TransparentAddressBlockFilter
+TransparentAddressBlockFilter restricts the results to the given address
+
+or block range.
+
+Field	Type	Label	Description
+address	string		
+
+range	BlockRange		
+
+TxFilter
+A TxFilter contains the information needed to identify a particular
+
+transaction: either a block and an index, or a direct transaction hash.
+
+Currently, only specification by hash is supported.
+
+Field	Type	Label	Description
+block	BlockID		
+
+index	uint64		
+
+hash	bytes		
+
+CompactTxStreamer
+Method Name	Request Type	Response Type	Description
+GetLatestBlock	ChainSpec	BlockID	
+Compact Blocks
+
+GetBlock	BlockID	CompactBlock	
+GetBlockRange	BlockRange	CompactBlock stream	
+GetTransaction	TxFilter	RawTransaction	
+Transactions
+
+SendTransaction	RawTransaction	SendResponse	
+GetAddressTxids	TransparentAddressBlockFilter	RawTransaction stream	
+t-Address support
+
+GetLightdInfo	Empty	LightdInfo	
+Misc
+
+Ping	Duration	PingResponse	
+Scalar Value Types
+.proto Type	Notes	C++ Type	Java Type	Python Type
+double		double	double	float
+float		float	float	float
+int32	Uses variable-length encoding. Inefficient for encoding negative numbers – if your field is likely to have negative values, use sint32 instead.	int32	int	int
+int64	Uses variable-length encoding. Inefficient for encoding negative numbers – if your field is likely to have negative values, use sint64 instead.	int64	long	int/long
+uint32	Uses variable-length encoding.	uint32	int	int/long
+uint64	Uses variable-length encoding.	uint64	long	int/long
+sint32	Uses variable-length encoding. Signed int value. These more efficiently encode negative numbers than regular int32s.	int32	int	int
+sint64	Uses variable-length encoding. Signed int value. These more efficiently encode negative numbers than regular int64s.	int64	long	int/long
+fixed32	Always four bytes. More efficient than uint32 if values are often greater than 2^28.	uint32	int	int
+fixed64	Always eight bytes. More efficient than uint64 if values are often greater than 2^56.	uint64	long	int/long
+sfixed32	Always four bytes.	int32	int	int
+sfixed64	Always eight bytes.	int64	long	int/long
+bool		bool	boolean	boolean
+string	A string must always contain UTF-8 encoded or 7-bit ASCII text.	string	String	str/unicode
+bytes	May contain any arbitrary sequence of bytes.	string	ByteString	str
+Read the Docs
+ latest
+EthicalAds is a GDPR-compliant ad network for devs No cookie banners, and only dev-focused ads.
+Ads by EthicalAds

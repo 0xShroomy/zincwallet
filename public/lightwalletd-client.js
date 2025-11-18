@@ -8,7 +8,7 @@
 self.LightwalletdClient = (function() {
   
   // Network configuration
-  let currentNetwork = 'testnet'; // Start with testnet for development
+  let currentNetwork = 'mainnet'; // Start with mainnet by default
   
   const NETWORKS = {
     mainnet: {

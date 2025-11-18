@@ -117,13 +117,13 @@ let walletState = {
   isLocked: true,
   address: '',
   balance: 0,
-  network: 'testnet' // Default to testnet for development
+  network: 'mainnet' // Default to mainnet
 };
 
-// Set lightwalletd client to testnet
+// Set lightwalletd client to mainnet
 if (typeof self.LightwalletdClient !== 'undefined') {
-  self.LightwalletdClient.setNetwork('testnet');
-  console.log('[Background] Network set to TESTNET for development');
+  self.LightwalletdClient.setNetwork('mainnet');
+  console.log('[Background] Network set to MAINNET');
 }
 
 /**
