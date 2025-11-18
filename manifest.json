@@ -32,7 +32,11 @@
     "tabs"
   ],
   "host_permissions": [
-    "https://*/*"
+    "https://explorer.testnet.z.cash/*",
+    "https://testnet.zcash.community/*",
+    "https://api.blockchair.com/*",
+    "https://insight.zcash.com/*",
+    "https://zcashnetwork.info/*"
   ],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"
