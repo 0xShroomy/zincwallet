@@ -180,15 +180,34 @@ async function handleCreateWallet(data) {
     const encryptedSeed = await encrypt(mnemonic, password);
     await chrome.storage.local.set({ encryptedSeed });
     
+    // Derive address from mnemonic
+    const { address, derivationPath } = await self.ZcashKeys.deriveAddress(mnemonic, 0, 0);
+    
     // Update state
     walletState.isInitialized = true;
     walletState.isLocked = false;
+    walletState.address = address;
+    
+    // Save session state
+    await chrome.storage.session.set({
+      walletUnlocked: true,
+      walletAddress: address,
+      unlockTime: Date.now()
+    });
     
     console.log('[Background] Wallet created successfully');
+    console.log('[Background] Address:', address);
+    console.log('[Background] Derivation path:', derivationPath);
+    
+    // Auto-refresh balance after creation
+    handleRefreshBalance().catch(err => {
+      console.warn('[Background] Auto-refresh balance failed:', err);
+    });
     
     return {
       success: true,
-      mnemonic: mnemonic
+      mnemonic: mnemonic,
+      address: address
     };
   } catch (error) {
     console.error('[Background] Wallet creation failed:', error);

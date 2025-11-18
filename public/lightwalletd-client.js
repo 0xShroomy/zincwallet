@@ -60,8 +60,16 @@ self.LightwalletdClient = (function() {
     // Try each explorer in order
     for (const explorerBase of NETWORKS[currentNetwork].explorers) {
       try {
-        // Try Insight API format first: /addr/{address}
-        const apiUrl = `${explorerBase}/addr/${address}`;
+        // Determine URL format based on explorer
+        let apiUrl;
+        if (explorerBase.includes('blockchair')) {
+          // Blockchair uses /dashboards/address/ format
+          apiUrl = `${explorerBase}/dashboards/address/${address}`;
+        } else {
+          // Insight API uses /addr/ format
+          apiUrl = `${explorerBase}/addr/${address}`;
+        }
+        
         console.log('[Lightwalletd] Querying:', apiUrl);
         
         const response = await fetch(apiUrl, {
