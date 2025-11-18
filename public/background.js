@@ -125,6 +125,27 @@ let walletState = {
 async function initWalletState() {
   const stored = await chrome.storage.local.get(['encryptedSeed']);
   walletState.isInitialized = !!stored.encryptedSeed;
+  
+  // Check if wallet was previously unlocked (within session)
+  const session = await chrome.storage.session.get(['walletUnlocked', 'walletAddress', 'unlockTime']);
+  
+  if (session.walletUnlocked && session.walletAddress) {
+    // Check if session is still valid (30 minute timeout)
+    const now = Date.now();
+    const unlockTime = session.unlockTime || 0;
+    const thirtyMinutes = 30 * 60 * 1000;
+    
+    if (now - unlockTime < thirtyMinutes) {
+      walletState.isLocked = false;
+      walletState.address = session.walletAddress;
+      console.log('[Background] Restored wallet session:', walletState.address);
+    } else {
+      // Session expired, clear it
+      await chrome.storage.session.remove(['walletUnlocked', 'walletAddress', 'unlockTime']);
+      console.log('[Background] Wallet session expired');
+    }
+  }
+  
   console.log('[Background] Wallet initialized:', walletState.isInitialized);
 }
 
@@ -187,6 +208,13 @@ async function handleUnlockWallet(data) {
     walletState.isLocked = false;
     walletState.address = address;
     
+    // Save session state (persists across popup closes)
+    await chrome.storage.session.set({
+      walletUnlocked: true,
+      walletAddress: address,
+      unlockTime: Date.now()
+    });
+    
     console.log('[Background] Wallet unlocked successfully');
     console.log('[Background] Address:', address);
     console.log('[Background] Derivation path:', derivationPath);
@@ -205,6 +233,9 @@ async function handleLockWallet() {
   walletState.isLocked = true;
   walletState.address = '';
   walletState.balance = 0;
+  
+  // Clear session state
+  await chrome.storage.session.remove(['walletUnlocked', 'walletAddress', 'unlockTime']);
   
   console.log('[Background] Wallet locked');
   
@@ -236,6 +267,13 @@ async function handleImportWallet(data) {
     walletState.isInitialized = true;
     walletState.isLocked = false;
     walletState.address = address;
+    
+    // Save session state
+    await chrome.storage.session.set({
+      walletUnlocked: true,
+      walletAddress: address,
+      unlockTime: Date.now()
+    });
     
     console.log('[Background] Wallet imported successfully');
     console.log('[Background] Address:', address);

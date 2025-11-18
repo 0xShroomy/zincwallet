@@ -9,6 +9,7 @@ interface Props {
 
 export default function DashboardPage({ walletState, onUpdate }: Props) {
   const [view, setView] = useState<'home' | 'inscriptions'>('home');
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   async function handleLock() {
     await browser.runtime.sendMessage({
@@ -20,12 +21,17 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
   }
 
   async function handleSync() {
-    await browser.runtime.sendMessage({
-      type: 'WALLET_ACTION',
-      action: 'SYNC',
-      data: {},
-    });
-    onUpdate();
+    setIsRefreshing(true);
+    try {
+      await browser.runtime.sendMessage({
+        type: 'WALLET_ACTION',
+        action: 'REFRESH_BALANCE',
+        data: {},
+      });
+      onUpdate();
+    } finally {
+      setIsRefreshing(false);
+    }
   }
 
   const balanceZEC = (walletState.balance / 100000000).toFixed(8);
@@ -39,10 +45,16 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
           <div className="flex items-center gap-2">
             <button
               onClick={handleSync}
-              className="p-2 hover:bg-zinc-800 rounded-lg transition-colors text-zinc-400 hover:text-amber-500"
+              disabled={isRefreshing}
+              className="p-2 hover:bg-zinc-800 rounded-lg transition-colors text-zinc-400 hover:text-amber-500 disabled:opacity-50"
               title="Refresh"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg 
+                className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
             </button>
