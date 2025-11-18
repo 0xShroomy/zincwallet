@@ -19,17 +19,16 @@ export default defineConfig({
       disableAutoLaunch: true,
       skipManifestValidation: true,
       scriptViteConfig: {
+        plugins: [],  // NO PLUGINS for content/background scripts
         build: {
           cssCodeSplit: false,
-          minify: false,
+          minify: true,
           rollupOptions: {
             output: {
               inlineDynamicImports: true,
-              assetFileNames: () => {
-                // Don't output CSS for scripts (content/background)
-                return 'ignored-[name][extname]';
-              },
+              assetFileNames: () => 'ignored-[name][extname]',
             },
+            external: ['react', 'react-dom', 'react/jsx-runtime'],
           },
         },
       },
