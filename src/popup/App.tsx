@@ -33,16 +33,16 @@ function App() {
       setWalletState(response as WalletState);
     } catch (error) {
       console.error('[App] Failed to load wallet state:', error);
-      // Fallback: Check storage directly for now
-      const stored = await browser.storage.local.get(['encryptedSeed']);
-      const isInitialized = !!stored.encryptedSeed;
+      // Fallback: Check multi-wallet storage
+      const stored = await browser.storage.local.get(['wallets', 'encryptedSeed']);
+      const isInitialized = (stored.wallets && stored.wallets.length > 0) || !!stored.encryptedSeed;
       
       setWalletState({ 
         isInitialized, 
         isLocked: true, 
         address: '', 
         balance: 0, 
-        network: 'testnet' 
+        network: 'mainnet' 
       });
     } finally {
       setLoading(false);
