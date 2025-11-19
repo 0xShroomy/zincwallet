@@ -108,25 +108,25 @@ export default function OnboardingPage({ onComplete }: Props) {
 
   if (mode === 'create' && showMnemonic) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6">
+      <div className="min-h-screen bg-zinc-darker flex items-center justify-center p-6">
         <div className="card max-w-md w-full">
-          <h2 className="text-2xl font-bold mb-4">Backup Your Seed Phrase</h2>
-          <div className="bg-zinc-100 p-4 rounded-lg mb-4">
-            <p className="text-sm text-zinc-700 mb-3 font-medium">
+          <h2 className="text-2xl font-bold mb-4 text-white">Backup Your Seed Phrase</h2>
+          <div className="bg-zinc-900 border border-zinc-700 p-4 rounded-lg mb-4">
+            <p className="text-sm text-zinc-300 mb-3 font-medium">
               Write down these 24 words in order and store them safely:
             </p>
             <div className="grid grid-cols-3 gap-2 font-mono text-sm">
               {generatedMnemonic.split(' ').map((word, i) => (
-                <div key={i} className="bg-white p-2 rounded text-black">
-                  <span className="text-zinc-400 mr-1">{i + 1}.</span>
+                <div key={i} className="bg-zinc-800 border border-zinc-700 p-2 rounded text-white">
+                  <span className="text-zinc-500 mr-1">{i + 1}.</span>
                   {word}
                 </div>
               ))}
             </div>
           </div>
           
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
-            <p className="text-sm text-yellow-800 font-medium">
+          <div className="bg-amber-900/20 border border-amber-500/30 rounded-lg p-4 mb-4">
+            <p className="text-sm text-amber-200 font-medium">
               Never share your seed phrase with anyone. Anyone with these words can access your funds.
             </p>
           </div>

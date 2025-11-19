@@ -74,7 +74,7 @@ export async function getSettings(): Promise<Record<string, any>> {
  */
 export async function getSetting<T>(key: string, defaultValue?: T): Promise<T> {
   const settings = await getSettings();
-  return settings[key] !== undefined ? settings[key] : defaultValue;
+  return settings[key] !== undefined ? settings[key] : (defaultValue as T);
 }
 
 /**

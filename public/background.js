@@ -7,11 +7,12 @@ console.log('[Background] Starting...');
 // LOAD BIP39 LIBRARY, ZCASH KEYS, AND LIGHTWALLETD CLIENT
 // ============================================================================
 
-// Import BIP39 library, Zcash address derivation, and lightwalletd client
+// Import BIP39 library, Zcash address derivation, lightwalletd client, and transaction builder
 /* global importScripts */
 importScripts('bip39.js');
 importScripts('zcash-keys.js');
 importScripts('lightwalletd-client.js');
+importScripts('zcash-transaction.js');
 
 // ============================================================================
 // CRYPTO UTILITIES
@@ -85,9 +86,9 @@ async function encrypt(data, password) {
 }
 
 /**
- * Decrypt data using AES-GCM
+ * Decrypt mnemonic using AES-GCM
  */
-async function decrypt(encryptedBase64, password) {
+async function decryptMnemonic(encryptedBase64, password) {
   // Decode from base64
   const encryptedBytes = Uint8Array.from(atob(encryptedBase64), c => c.charCodeAt(0));
   
@@ -126,17 +127,88 @@ if (typeof self.LightwalletdClient !== 'undefined') {
   console.log('[Background] Network set to MAINNET');
 }
 
+// ===========================================================================
+// MULTI-WALLET MANAGEMENT
+// ===========================================================================
+
+/**
+ * Get all wallets from storage
+ */
+async function getAllWallets() {
+  const stored = await chrome.storage.local.get(['wallets', 'activeWalletId']);
+  return {
+    wallets: stored.wallets || [],
+    activeWalletId: stored.activeWalletId || null
+  };
+}
+
+/**
+ * Save wallet to storage
+ */
+async function saveWallet(wallet) {
+  const { wallets } = await getAllWallets();
+  
+  // Check if wallet already exists (by address)
+  const existingIndex = wallets.findIndex(w => w.address === wallet.address);
+  
+  if (existingIndex >= 0) {
+    // Update existing
+    wallets[existingIndex] = { ...wallets[existingIndex], ...wallet };
+  } else {
+    // Add new
+    wallets.push(wallet);
+  }
+  
+  await chrome.storage.local.set({ wallets });
+  return wallet;
+}
+
+/**
+ * Set active wallet
+ */
+async function setActiveWallet(walletId) {
+  await chrome.storage.local.set({ activeWalletId: walletId });
+}
+
+/**
+ * Get active wallet
+ */
+async function getActiveWallet() {
+  const { wallets, activeWalletId } = await getAllWallets();
+  return wallets.find(w => w.id === activeWalletId) || null;
+}
+
 /**
  * Initialize wallet state from storage
  */
 async function initWalletState() {
-  const stored = await chrome.storage.local.get(['encryptedSeed']);
-  walletState.isInitialized = !!stored.encryptedSeed;
+  const { wallets, activeWalletId } = await getAllWallets();
+  
+  // Also check legacy single wallet storage for backwards compatibility
+  const legacy = await chrome.storage.local.get(['encryptedSeed']);
+  
+  if (legacy.encryptedSeed && wallets.length === 0) {
+    // Migrate legacy wallet
+    console.log('[Background] Migrating legacy wallet to multi-wallet format');
+    const walletId = 'wallet_' + Date.now();
+    await chrome.storage.local.set({
+      wallets: [{
+        id: walletId,
+        name: 'My Wallet',
+        encryptedSeed: legacy.encryptedSeed,
+        createdAt: Date.now()
+      }],
+      activeWalletId: walletId
+    });
+    await chrome.storage.local.remove(['encryptedSeed']);
+  }
+  
+  walletState.isInitialized = wallets.length > 0;
   
   // Check if wallet was previously unlocked (within session)
-  const session = await chrome.storage.session.get(['walletUnlocked', 'walletAddress', 'unlockTime']);
+  const session = await chrome.storage.session.get(['walletUnlocked', 'walletAddress', 'unlockTime', 'activeWalletId']);
   
-  if (session.walletUnlocked && session.walletAddress) {
+  if (session.walletUnlocked && session.walletAddress && session.activeWalletId === activeWalletId) {
     // Check if session is still valid (30 minute timeout)
     const now = Date.now();
     const unlockTime = session.unlockTime || 0;
@@ -153,12 +225,12 @@ async function initWalletState() {
       });
     } else {
       // Session expired, clear it
-      await chrome.storage.session.remove(['walletUnlocked', 'walletAddress', 'unlockTime']);
+      await chrome.storage.session.remove(['walletUnlocked', 'walletAddress', 'unlockTime', 'activeWalletId']);
       console.log('[Background] Wallet session expired');
     }
   }
   
-  console.log('[Background] Wallet initialized:', walletState.isInitialized);
+  console.log('[Background] Wallet initialized:', walletState.isInitialized, 'Total wallets:', wallets.length);
 }
 
 // ============================================================================
@@ -167,7 +239,7 @@ async function initWalletState() {
 
 async function handleCreateWallet(data) {
   try {
-    const { password } = data;
+    const { password, name } = data;
     
     if (!password || password.length < 8) {
       throw new Error('Password must be at least 8 characters');
@@ -176,12 +248,26 @@ async function handleCreateWallet(data) {
     // Generate mnemonic
     const mnemonic = await generateMnemonic();
     
-    // Encrypt and store
+    // Encrypt seed
     const encryptedSeed = await encrypt(mnemonic, password);
-    await chrome.storage.local.set({ encryptedSeed });
     
     // Derive address from mnemonic
     const { address, derivationPath } = await self.ZcashKeys.deriveAddress(mnemonic, 0, 0);
+    
+    // Create wallet object
+    const walletId = 'wallet_' + Date.now();
+    const wallet = {
+      id: walletId,
+      name: name || `Wallet ${(await getAllWallets()).wallets.length + 1}`,
+      address,
+      encryptedSeed,
+      derivationPath,
+      createdAt: Date.now()
+    };
+    
+    // Save wallet
+    await saveWallet(wallet);
+    await setActiveWallet(walletId);
     
     // Update state
     walletState.isInitialized = true;
@@ -192,22 +278,24 @@ async function handleCreateWallet(data) {
     await chrome.storage.session.set({
       walletUnlocked: true,
       walletAddress: address,
-      unlockTime: Date.now()
+      unlockTime: Date.now(),
+      activeWalletId: walletId
     });
     
-    console.log('[Background] Wallet created successfully');
+    console.log('[Background] Wallet created successfully:', wallet.name);
     console.log('[Background] Address:', address);
-    console.log('[Background] Derivation path:', derivationPath);
     
-    // Auto-refresh balance after creation
+    // Auto-refresh balance
     handleRefreshBalance().catch(err => {
       console.warn('[Background] Auto-refresh balance failed:', err);
     });
     
     return {
       success: true,
-      mnemonic: mnemonic,
-      address: address
+      mnemonic,
+      address,
+      walletId,
+      walletName: wallet.name
     };
   } catch (error) {
     console.error('[Background] Wallet creation failed:', error);
@@ -218,46 +306,69 @@ async function handleCreateWallet(data) {
 async function handleUnlockWallet(data) {
   try {
     const { password } = data;
-    
+
     if (!password) {
       throw new Error('Password is required');
     }
+
+    console.log('[Background] Unlocking wallet...');
+
+    // Get active wallet from multi-wallet storage
+    const { wallets, activeWalletId } = await getAllWallets();
     
-    // Get encrypted seed from storage
-    const stored = await chrome.storage.local.get(['encryptedSeed']);
-    if (!stored.encryptedSeed) {
-      throw new Error('No wallet found');
+    if (!wallets || wallets.length === 0) {
+      throw new Error('No wallet found. Please create a wallet first.');
     }
     
-    // Decrypt seed
-    const mnemonic = await decrypt(stored.encryptedSeed, password);
+    // Use active wallet or first wallet
+    const wallet = wallets.find(w => w.id === activeWalletId) || wallets[0];
     
-    // Derive Zcash transparent address from mnemonic
-    const { address, derivationPath } = await self.ZcashKeys.deriveAddress(mnemonic, 0, 0);
-    
-    // Update state
+    if (!wallet || !wallet.encryptedSeed) {
+      throw new Error('No wallet found. Please create a wallet first.');
+    }
+
+    console.log('[Background] Decrypting wallet:', wallet.name);
+    const mnemonic = await decryptMnemonic(wallet.encryptedSeed, password);
+
+    if (!mnemonic) {
+      throw new Error('Failed to decrypt wallet. Wrong password?');
+    }
+
+    console.log('[Background] Deriving address...');
+    const derived = await self.ZcashKeys.deriveAddress(mnemonic, 0, 0);
+
+    if (!derived || !derived.address) {
+      throw new Error('Failed to derive address');
+    }
+
+    console.log('[Background] Address derived:', derived.address);
+
+    // Update wallet state
+    walletState.address = derived.address;
     walletState.isLocked = false;
-    walletState.address = address;
-    
-    // Save session state (persists across popup closes)
+    walletState.balance = 0;
+
+    // Cache decrypted mnemonic and private key in session storage for transaction signing
     await chrome.storage.session.set({
       walletUnlocked: true,
-      walletAddress: address,
-      unlockTime: Date.now()
+      walletAddress: derived.address,
+      unlockTime: Date.now(),
+      activeWalletId: wallet.id,
+      cachedMnemonic: mnemonic,
+      cachedPrivateKey: derived.privateKey,
     });
+
+    console.log('[Background] Wallet unlocked successfully:', wallet.name);
     
-    console.log('[Background] Wallet unlocked successfully');
-    console.log('[Background] Address:', address);
-    console.log('[Background] Derivation path:', derivationPath);
-    
-    // Auto-refresh balance after unlock
+    // Refresh balance
     handleRefreshBalance().catch(err => {
       console.warn('[Background] Auto-refresh balance failed:', err);
     });
-    
+
     return {
       success: true,
-      address: address
+      address: derived.address,
+      walletName: wallet.name
     };
   } catch (error) {
     console.error('[Background] Wallet unlock failed:', error);
@@ -282,7 +393,7 @@ async function handleLockWallet() {
 
 async function handleImportWallet(data) {
   try {
-    const { mnemonic, password } = data;
+    const { mnemonic, password, name } = data;
     
     if (!password || password.length < 8) {
       throw new Error('Password must be at least 8 characters');
@@ -292,12 +403,27 @@ async function handleImportWallet(data) {
       throw new Error('Invalid mnemonic - must be 24 words');
     }
     
-    // Encrypt and store
+    // Encrypt seed
     const encryptedSeed = await encrypt(mnemonic.trim(), password);
-    await chrome.storage.local.set({ encryptedSeed });
     
     // Derive address
     const { address, derivationPath } = await self.ZcashKeys.deriveAddress(mnemonic.trim(), 0, 0);
+    
+    // Create wallet object
+    const walletId = 'wallet_' + Date.now();
+    const wallet = {
+      id: walletId,
+      name: name || `Imported Wallet ${(await getAllWallets()).wallets.length + 1}`,
+      address,
+      encryptedSeed,
+      derivationPath,
+      createdAt: Date.now(),
+      imported: true
+    };
+    
+    // Save wallet
+    await saveWallet(wallet);
+    await setActiveWallet(walletId);
     
     // Update state
     walletState.isInitialized = true;
@@ -308,21 +434,23 @@ async function handleImportWallet(data) {
     await chrome.storage.session.set({
       walletUnlocked: true,
       walletAddress: address,
-      unlockTime: Date.now()
+      unlockTime: Date.now(),
+      activeWalletId: walletId
     });
     
-    console.log('[Background] Wallet imported successfully');
+    console.log('[Background] Wallet imported successfully:', wallet.name);
     console.log('[Background] Address:', address);
-    console.log('[Background] Derivation path:', derivationPath);
     
-    // Auto-refresh balance after import
+    // Auto-refresh balance
     handleRefreshBalance().catch(err => {
       console.warn('[Background] Auto-refresh balance failed:', err);
     });
     
     return {
       success: true,
-      address: address
+      address,
+      walletId,
+      walletName: wallet.name
     };
   } catch (error) {
     console.error('[Background] Wallet import failed:', error);
@@ -332,6 +460,85 @@ async function handleImportWallet(data) {
 
 async function handleGetState() {
   return { ...walletState };
+}
+
+async function handleGetWallets() {
+  const { wallets, activeWalletId } = await getAllWallets();
+  return {
+    success: true,
+    wallets: wallets.map(w => ({
+      id: w.id,
+      name: w.name,
+      address: w.address,
+      createdAt: w.createdAt,
+      imported: w.imported || false
+    })),
+    activeWalletId
+  };
+}
+
+async function handleSwitchWallet(data) {
+  try {
+    const { walletId, password } = data;
+    
+    const { wallets } = await getAllWallets();
+    const wallet = wallets.find(w => w.id === walletId);
+    
+    if (!wallet) {
+      throw new Error('Wallet not found');
+    }
+    
+    if (!password) {
+      throw new Error('Password required');
+    }
+    
+    // Decrypt and verify password
+    const mnemonic = await decryptMnemonic(wallet.encryptedSeed, password);
+    if (!mnemonic) {
+      throw new Error('Invalid password');
+    }
+    
+    // Derive keys
+    const { address, privateKey } = await self.ZcashKeys.deriveAddress(mnemonic, 0, 0);
+    
+    // Set as active
+    await setActiveWallet(walletId);
+    
+    // Update state
+    walletState.isLocked = false;
+    walletState.address = address;
+    walletState.balance = 0;
+    
+    // Cache in session
+    await chrome.storage.session.set({
+      walletUnlocked: true,
+      walletAddress: address,
+      unlockTime: Date.now(),
+      activeWalletId: walletId,
+      cachedMnemonic: mnemonic,
+      cachedPrivateKey: privateKey
+    });
+    
+    console.log('[Background] Switched to wallet:', wallet.name);
+    
+    // Refresh balance
+    handleRefreshBalance().catch(err => {
+      console.warn('[Background] Auto-refresh balance failed:', err);
+    });
+    
+    return {
+      success: true,
+      walletId,
+      walletName: wallet.name,
+      address
+    };
+  } catch (error) {
+    console.error('[Background] Wallet switch failed:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
 }
 
 async function handleRefreshBalance() {
@@ -378,6 +585,243 @@ async function handleRefreshBalance() {
   }
 }
 
+async function handleInscription(data) {
+  try {
+    const { type, payload } = data;
+    
+    console.log('[Background] INSCRIPTION:', { type, payload });
+    
+    if (!walletState.address) {
+      throw new Error('Wallet is locked');
+    }
+    
+    // Get cached private key from session
+    const session = await chrome.storage.session.get(['cachedPrivateKey']);
+    if (!session.cachedPrivateKey) {
+      throw new Error('Wallet session expired. Please unlock wallet again.');
+    }
+    
+    const privateKeyHex = session.cachedPrivateKey;
+    const privateKey = new Uint8Array(privateKeyHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+    
+    // Get UTXOs
+    const utxos = await self.LightwalletdClient.getUtxos(walletState.address);
+    if (!utxos || utxos.length === 0) {
+      throw new Error('No UTXOs available');
+    }
+    
+    // Build inscription data based on type
+    let inscriptionData;
+    if (type === 'zrc20-deploy') {
+      // ZRC-20 Deploy: {"p":"zrc-20","op":"deploy","tick":"TOKEN","max":"21000000","lim":"1000"}
+      inscriptionData = JSON.stringify({
+        p: 'zrc-20',
+        op: 'deploy',
+        tick: payload.tick,
+        max: payload.max,
+        lim: payload.lim || payload.max
+      });
+    } else if (type === 'zrc20-mint') {
+      // ZRC-20 Mint: {"p":"zrc-20","op":"mint","tick":"TOKEN","amt":"1000"}
+      inscriptionData = JSON.stringify({
+        p: 'zrc-20',
+        op: 'mint',
+        tick: payload.tick,
+        amt: payload.amt
+      });
+    } else if (type === 'zrc20-transfer') {
+      // ZRC-20 Transfer: {"p":"zrc-20","op":"transfer","tick":"TOKEN","amt":"100"}
+      inscriptionData = JSON.stringify({
+        p: 'zrc-20',
+        op: 'transfer',
+        tick: payload.tick,
+        amt: payload.amt
+      });
+    } else if (type === 'nft-deploy') {
+      // NFT Deploy: {"p":"zrc-nft","op":"deploy","name":"Collection Name","symbol":"COLL","max":"10000"}
+      inscriptionData = JSON.stringify({
+        p: 'zrc-nft',
+        op: 'deploy',
+        name: payload.name,
+        symbol: payload.symbol,
+        max: payload.max
+      });
+    } else if (type === 'nft-mint') {
+      // NFT Mint: {"p":"zrc-nft","op":"mint","collection":"COLL","metadata":"..."}
+      inscriptionData = JSON.stringify({
+        p: 'zrc-nft',
+        op: 'mint',
+        collection: payload.collection,
+        metadata: payload.metadata || '{}'
+      });
+    } else {
+      throw new Error('Unknown inscription type');
+    }
+    
+    console.log('[Background] Inscription data:', inscriptionData);
+    
+    // Encode inscription as bytes
+    const encoder = new TextEncoder();
+    const inscriptionBytes = encoder.encode(inscriptionData);
+    
+    // Select UTXOs (simple greedy)
+    const selectedUtxos = [];
+    let totalInput = 0;
+    const requiredAmount = 10000; // ~0.0001 ZEC for fees
+    
+    for (const utxo of utxos.sort((a, b) => b.satoshis - a.satoshis)) {
+      selectedUtxos.push(utxo);
+      totalInput += utxo.satoshis;
+      if (totalInput >= requiredAmount) break;
+    }
+    
+    if (totalInput < requiredAmount) {
+      throw new Error(`Insufficient balance for inscription. Need ${requiredAmount} zatoshis, have ${totalInput}`);
+    }
+    
+    // Build transaction with OP_RETURN
+    const tx = await self.ZcashTransaction.buildTransaction({
+      utxos: selectedUtxos,
+      outputs: [
+        { opReturn: inscriptionBytes }
+      ],
+      changeAddress: walletState.address,
+      feeRate: 1
+    });
+    
+    // Sign transaction
+    const signedTx = await self.ZcashTransaction.signTransaction(tx, privateKey, selectedUtxos);
+    
+    // Serialize transaction
+    const txHex = self.ZcashTransaction.serializeTransaction(signedTx);
+    
+    // Broadcast transaction
+    const txid = await self.LightwalletdClient.sendRawTransaction(txHex);
+    
+    console.log('[Background] Inscription broadcast successful! TXID:', txid);
+    
+    // Refresh balance
+    setTimeout(() => handleRefreshBalance(), 2000);
+    
+    return {
+      success: true,
+      txid,
+      type,
+    };
+    
+  } catch (error) {
+    console.error('[Background] INSCRIPTION failed:', error);
+    return {
+      success: false,
+      error: error.message || 'Failed to create inscription',
+    };
+  }
+}
+
+async function handleSendZec(data) {
+  try {
+    const { to, amountZec } = data;
+    
+    console.log('[Background] SEND_ZEC:', { to, amountZec });
+    
+    if (!walletState.address) {
+      throw new Error('Wallet is locked');
+    }
+    
+    if (!to || !to.startsWith('t1')) {
+      throw new Error('Invalid recipient address');
+    }
+    
+    if (!amountZec || amountZec <= 0) {
+      throw new Error('Invalid amount');
+    }
+    
+    // Get cached private key from session
+    const session = await chrome.storage.session.get(['cachedPrivateKey']);
+    if (!session.cachedPrivateKey) {
+      throw new Error('Wallet session expired. Please unlock wallet again.');
+    }
+    
+    const privateKeyHex = session.cachedPrivateKey;
+    const privateKey = new Uint8Array(privateKeyHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+    
+    console.log('[Background] Retrieved private key from session');
+    
+    // Get UTXOs for the wallet address
+    console.log('[Background] Fetching UTXOs for:', walletState.address);
+    const utxos = await self.LightwalletdClient.getUtxos(walletState.address);
+    
+    if (!utxos || utxos.length === 0) {
+      throw new Error('No UTXOs available (no confirmed balance)');
+    }
+    
+    console.log('[Background] Found', utxos.length, 'UTXOs');
+    
+    // Calculate amount in zatoshis
+    const amountZatoshis = Math.round(amountZec * 100000000);
+    
+    // Select UTXOs (simple greedy selection)
+    const selectedUtxos = [];
+    let totalInput = 0;
+    const requiredAmount = amountZatoshis + 10000; // +10k zatoshis for fee estimate
+    
+    for (const utxo of utxos.sort((a, b) => b.satoshis - a.satoshis)) {
+      selectedUtxos.push(utxo);
+      totalInput += utxo.satoshis;
+      if (totalInput >= requiredAmount) break;
+    }
+    
+    if (totalInput < requiredAmount) {
+      throw new Error(`Insufficient balance. Need ${requiredAmount} zatoshis, have ${totalInput}`);
+    }
+    
+    console.log('[Background] Selected', selectedUtxos.length, 'UTXOs, total:', totalInput, 'zatoshis');
+    
+    // Build transaction
+    const tx = await self.ZcashTransaction.buildTransaction({
+      utxos: selectedUtxos,
+      outputs: [
+        { address: to, amount: amountZec }
+      ],
+      changeAddress: walletState.address,
+      feeRate: 1 // 1 zatoshi per byte
+    });
+    
+    console.log('[Background] Transaction built:', tx);
+    
+    // Sign transaction
+    console.log('[Background] Signing transaction...');
+    const signedTx = await self.ZcashTransaction.signTransaction(tx, privateKey, selectedUtxos);
+    
+    // Serialize transaction
+    console.log('[Background] Serializing transaction...');
+    const txHex = self.ZcashTransaction.serializeTransaction(signedTx);
+    
+    console.log('[Background] Transaction hex:', txHex);
+    
+    // Broadcast transaction
+    console.log('[Background] Broadcasting transaction...');
+    const txid = await self.LightwalletdClient.sendRawTransaction(txHex);
+    
+    console.log('[Background] Transaction broadcast successful! TXID:', txid);
+    
+    // Refresh balance after sending
+    setTimeout(() => handleRefreshBalance(), 2000);
+    
+    return {
+      success: true,
+      txid,
+    };
+    
+  } catch (error) {
+    console.error('[Background] SEND_ZEC failed:', error);
+    return {
+      success: false,
+      error: error.message || 'Failed to send transaction',
+    };
+  }
+}
+
 // ============================================================================
 // EVENT LISTENERS
 // ============================================================================
@@ -415,9 +859,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             result = await handleImportWallet(message.data);
             break;
             
+          case 'GET_WALLETS':
+            result = await handleGetWallets();
+            break;
+            
+          case 'SWITCH_WALLET':
+            result = await handleSwitchWallet(message.data);
+            break;
+            
           case 'REFRESH_BALANCE':
             result = await handleRefreshBalance();
             break;
+          
+          case 'SEND_ZEC':
+            return await handleSendZec(message.data);
+      
+          case 'CREATE_INSCRIPTION':
+            return await handleInscription(message.data);
             
           default:
             throw new Error(`Unknown action: ${message.action}`);

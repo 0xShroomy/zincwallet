@@ -10,23 +10,19 @@ self.LightwalletdClient = (function() {
   // Network configuration
   let currentNetwork = 'mainnet'; // Start with mainnet by default
   
+  // PROXY CONFIGURATION
+  // Vercel proxy endpoint for Zcash blockchain data
+  const PROXY_URL = 'https://vercel-proxy-boutbouwt.vercel.app/api';
+  
   const NETWORKS = {
     mainnet: {
-      // Public Zcash insight API servers
-      explorers: [
-        'https://insight.zcash.com/api',
-        'https://zcashnetwork.info/api',
-        'https://api.blockchair.com/zcash',
-      ],
+      // Using Vercel proxy to avoid CORS issues
+      proxyUrl: PROXY_URL,
       name: 'Mainnet',
     },
     testnet: {
-      // Public testnet explorers with API access
-      explorers: [
-        'https://explorer.testnet.z.cash/api',
-        'https://testnet.zcash.community/api',
-        'https://api.blockchair.com/zcash/testnet',
-      ],
+      // Testnet support (can add testnet endpoints to proxy later)
+      proxyUrl: PROXY_URL,
       name: 'Testnet',
     },
   };
@@ -51,129 +47,101 @@ self.LightwalletdClient = (function() {
   }
   
   /**
-   * Get address balance from block explorer
-   * Uses Insight API format (compatible with most Zcash explorers)
+   * Get address balance via Vercel proxy
    */
   async function getBalance(address) {
     console.log(`[Lightwalletd] Fetching ${NETWORKS[currentNetwork].name} balance for:`, address);
     
-    // Try each explorer in order
-    for (const explorerBase of NETWORKS[currentNetwork].explorers) {
-      try {
-        // Determine URL format based on explorer
-        let apiUrl;
-        if (explorerBase.includes('blockchair')) {
-          // Blockchair uses /dashboards/address/ format
-          apiUrl = `${explorerBase}/dashboards/address/${address}`;
-        } else {
-          // Insight API uses /addr/ format
-          apiUrl = `${explorerBase}/addr/${address}`;
-        }
-        
-        console.log('[Lightwalletd] Querying:', apiUrl);
-        
-        const response = await fetch(apiUrl, {
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json',
-          },
-        });
-        
-        if (!response.ok) {
-          console.warn(`[Lightwalletd] ${explorerBase} returned ${response.status}`);
-          continue; // Try next explorer
-        }
-        
-        const data = await response.json();
-        console.log('[Lightwalletd] Explorer response:', data);
-        
-        // Insight API format
-        if (typeof data.balance !== 'undefined') {
-          const balance = Math.round(data.balance * 100000000); // Convert ZEC to zatoshis
-          const txCount = data.txApperances || data.transactions || 0;
-          
-          console.log('[Lightwalletd] ✓ Balance:', balance, 'zatoshis =', (balance / 100000000).toFixed(8), 'ZEC');
-          console.log('[Lightwalletd] ✓ Transactions:', txCount);
-          
-          return {
-            balance,
-            transactions: txCount,
-          };
-        }
-        
-        // Blockchair format (fallback)
-        if (data.data && data.data[address]) {
-          const addrData = data.data[address].address;
-          const balance = addrData.balance || 0;
-          const txCount = addrData.transaction_count || 0;
-          
-          console.log('[Lightwalletd] ✓ Balance:', balance, 'zatoshis =', (balance / 100000000).toFixed(8), 'ZEC');
-          console.log('[Lightwalletd] ✓ Transactions:', txCount);
-          
-          return {
-            balance,
-            transactions: txCount,
-          };
-        }
-        
-      } catch (error) {
-        console.warn(`[Lightwalletd] ${explorerBase} failed:`, error.message);
-        continue; // Try next explorer
-      }
+    const proxyUrl = NETWORKS[currentNetwork].proxyUrl;
+    
+    if (!proxyUrl || proxyUrl.includes('YOUR-VERCEL-APP')) {
+      console.error('[Lightwalletd] ❌ PROXY NOT CONFIGURED!');
+      console.error('[Lightwalletd] Please deploy the Vercel proxy and update PROXY_URL in lightwalletd-client.js');
+      return { balance: 0, transactions: 0 };
     }
     
-    // All explorers failed
-    console.error('[Lightwalletd] All explorers failed');
-    return { balance: 0, transactions: 0 };
+    try {
+      const apiUrl = `${proxyUrl}/balance?address=${address}`;
+      console.log('[Lightwalletd] Querying proxy:', apiUrl);
+      
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        console.error(`[Lightwalletd] Proxy returned ${response.status}`);
+        const errorData = await response.json().catch(() => ({}));
+        console.error('[Lightwalletd] Error:', errorData);
+        return { balance: 0, transactions: 0 };
+      }
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        console.log('[Lightwalletd] ✓ Balance:', data.balance, 'zatoshis =', (data.balance / 100000000).toFixed(8), 'ZEC');
+        console.log('[Lightwalletd] ✓ Source:', data.source);
+        return {
+          balance: data.balance,
+          transactions: data.transactions
+        };
+      } else {
+        console.error('[Lightwalletd] Proxy error:', data.error);
+        return { balance: 0, transactions: 0 };
+      }
+      
+    } catch (error) {
+      console.error('[Lightwalletd] Failed to fetch balance:', error.message);
+      return { balance: 0, transactions: 0 };
+    }
   }
   
   /**
-   * Get UTXOs for address (needed for building transactions)
-   * Uses Insight API format: /addr/{address}/utxo
+   * Get UTXOs for address via Vercel proxy
    */
   async function getUtxos(address) {
     console.log(`[Lightwalletd] Fetching UTXOs for ${address}`);
     
-    // Try each explorer
-    for (const explorerBase of NETWORKS[currentNetwork].explorers) {
-      try {
-        const apiUrl = `${explorerBase}/addr/${address}/utxo`;
-        console.log('[Lightwalletd] Querying UTXOs:', apiUrl);
-        
-        const response = await fetch(apiUrl, {
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json',
-          },
-        });
-        
-        if (!response.ok) {
-          console.warn(`[Lightwalletd] ${explorerBase} returned ${response.status} for UTXOs`);
-          continue;
-        }
-        
-        const utxos = await response.json();
-        
-        if (Array.isArray(utxos)) {
-          console.log(`[Lightwalletd] ✓ Found ${utxos.length} UTXOs`);
-          
-          return utxos.map(utxo => ({
-            txid: utxo.txid,
-            vout: utxo.vout,
-            scriptPubKey: utxo.scriptPubKey,
-            satoshis: utxo.satoshis || Math.round(utxo.amount * 100000000),
-            confirmations: utxo.confirmations || 0,
-          }));
-        }
-        
-      } catch (error) {
-        console.warn(`[Lightwalletd] ${explorerBase} UTXO fetch failed:`, error.message);
-        continue;
-      }
+    const proxyUrl = NETWORKS[currentNetwork].proxyUrl;
+    
+    if (!proxyUrl || proxyUrl.includes('YOUR-VERCEL-APP')) {
+      console.error('[Lightwalletd] ❌ PROXY NOT CONFIGURED!');
+      return [];
     }
     
-    console.error('[Lightwalletd] Could not fetch UTXOs from any explorer');
-    return [];
+    try {
+      const apiUrl = `${proxyUrl}/utxos?address=${address}`;
+      console.log('[Lightwalletd] Querying proxy:', apiUrl);
+      
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        console.error(`[Lightwalletd] Proxy returned ${response.status}`);
+        return [];
+      }
+      
+      const data = await response.json();
+      
+      if (data.success && Array.isArray(data.utxos)) {
+        console.log('[Lightwalletd] ✓ Found', data.utxos.length, 'UTXOs');
+        console.log('[Lightwalletd] ✓ Source:', data.source);
+        return data.utxos;
+      } else {
+        console.error('[Lightwalletd] Proxy error:', data.error);
+        return [];
+      }
+      
+    } catch (error) {
+      console.error('[Lightwalletd] Failed to fetch UTXOs:', error.message);
+      return [];
+    }
   }
   
   /**
@@ -203,58 +171,58 @@ self.LightwalletdClient = (function() {
   }
   
   /**
-   * Broadcast raw transaction
-   * Uses Insight API: POST /tx/send with { rawtx: "hex" }
+   * Broadcast transaction via Vercel proxy
    */
-  async function sendRawTransaction(txHex) {
-    console.log('[Lightwalletd] Broadcasting transaction');
-    console.log('[Lightwalletd] Tx hex length:', txHex.length);
+  async function broadcastTransaction(txHex) {
+    console.log(`[Lightwalletd] Broadcasting transaction (${txHex.length} bytes)`);
     
-    // Try each explorer
-    for (const explorerBase of NETWORKS[currentNetwork].explorers) {
-      try {
-        const apiUrl = `${explorerBase}/tx/send`;
-        console.log('[Lightwalletd] Broadcasting to:', apiUrl);
-        
-        const response = await fetch(apiUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-          },
-          body: JSON.stringify({
-            rawtx: txHex,
-          }),
-        });
-        
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.warn(`[Lightwalletd] ${explorerBase} broadcast failed: ${errorText}`);
-          continue;
-        }
-        
-        const result = await response.json();
-        const txid = result.txid || result.result || result;
-        
-        console.log('[Lightwalletd] ✓ Transaction broadcast successful!');
-        console.log('[Lightwalletd] ✓ TXID:', txid);
-        
-        return txid;
-        
-      } catch (error) {
-        console.warn(`[Lightwalletd] ${explorerBase} broadcast failed:`, error.message);
-        continue;
-      }
+    const proxyUrl = NETWORKS[currentNetwork].proxyUrl;
+    
+    if (!proxyUrl || proxyUrl.includes('YOUR-VERCEL-APP')) {
+      throw new Error('Proxy not configured. Please deploy Vercel proxy first.');
     }
     
-    throw new Error('Failed to broadcast transaction to any explorer');
+    try {
+      const apiUrl = `${proxyUrl}/broadcast`;
+      console.log('[Lightwalletd] Broadcasting via proxy:', apiUrl);
+      
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({ txHex })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('[Lightwalletd] Broadcast failed:', errorData);
+        throw new Error(errorData.error || `Proxy returned ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.success && data.txid) {
+        console.log('[Lightwalletd] ✓ Transaction broadcast successful!');
+        console.log('[Lightwalletd] ✓ TXID:', data.txid);
+        console.log('[Lightwalletd] ✓ Source:', data.source);
+        return data.txid;
+      } else {
+        throw new Error(data.error || 'Broadcast failed');
+      }
+      
+    } catch (error) {
+      console.error('[Lightwalletd] Broadcast error:', error.message);
+      throw error;
+    }
   }
   
   return {
     getBalance,
     getUtxos,
     getBlockchainInfo,
-    sendRawTransaction,
+    broadcastTransaction,
     setNetwork,
     getNetwork,
   };

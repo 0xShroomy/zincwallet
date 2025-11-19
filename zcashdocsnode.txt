@@ -1,0 +1,2011 @@
+Zcash 6.2.0 RPC Docs
+getaddressbalance - Zcash 6.2.0 RPC
+getaddressbalance {"addresses": ["taddr", ...]}
+
+Returns the balance for addresses.
+
+WARNING: getaddressbalance is disabled.
+To enable it, restart zcashd with the following command line options:
+-experimentalfeatures and -insightexplorer or:
+-experimentalfeatures and -lightwalletd
+
+Alternatively add these two lines to the zcash.conf file:
+
+experimentalfeatures=1
+insightexplorer=1
+
+or:
+
+experimentalfeatures=1
+lightwalletd=1
+
+Arguments:
+{
+  "addresses":
+    [
+      "address"  (string) The base58check encoded address
+      ,...
+    ]
+}
+(or)
+"address"  (string) The base58check encoded address
+
+Result:
+{
+  "balance"  (string) The current balance in zatoshis
+  "received"  (string) The total number of zatoshis received (including change)
+}
+
+Examples:
+> zcash-cli getaddressbalance '{"addresses": ["tmYXBYJj1K7vhejSec5osXK2QsGa5MTisUQ"]}'
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getaddressbalance", "params": [{"addresses": ["tmYXBYJj1K7vhejSec5osXK2QsGa5MTisUQ"]}] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+
+
+
+Zcash 6.2.0 RPC Docs
+getaddressdeltas - Zcash 6.2.0 RPC
+getaddressdeltas {"addresses": ["taddr", ...], ("start": n), ("end": n), ("chainInfo": true|false)}
+
+Returns all changes for an address.
+
+Returns information about all changes to the given transparent addresses within the given (inclusive)
+
+block height range, default is the full blockchain.
+If start or end are not specified, they default to zero.
+If start is greater than the latest block height, it's interpreted as that height.
+
+If end is zero, it's interpreted as the latest block height.
+
+WARNING: getaddressdeltas is disabled.
+To enable it, restart zcashd with the following command line options:
+-experimentalfeatures and -insightexplorer or:
+-experimentalfeatures and -lightwalletd
+
+Alternatively add these two lines to the zcash.conf file:
+
+experimentalfeatures=1
+insightexplorer=1
+
+or:
+
+experimentalfeatures=1
+lightwalletd=1
+
+Arguments:
+{
+  "addresses":
+    [
+      "address" (string) The base58check encoded address
+      ,...
+    ]
+  "start"       (number, optional) The start block height
+  "end"         (number, optional) The end block height
+  "chainInfo"   (boolean, optional, default=false) Include chain info in results, only applies if start and end specified
+}
+(or)
+"address"       (string) The base58check encoded address
+
+Result:
+[
+  {
+    "satoshis"  (number) The difference of zatoshis
+    "txid"      (string) The related txid
+    "index"     (number) The related input or output index
+    "height"    (number) The block height
+    "address"   (string) The base58check encoded address
+  }, ...
+]
+
+(or, if chainInfo is true):
+
+{
+  "deltas":
+    [
+      {
+        "satoshis"    (number) The difference of zatoshis
+        "txid"        (string) The related txid
+        "index"       (number) The related input or output index
+        "height"      (number) The block height
+        "address"     (string)  The address base58check encoded
+      }, ...
+    ],
+  "start":
+    {
+      "hash"          (string)  The start block hash
+      "height"        (numeric) The height of the start block
+    }
+  "end":
+    {
+      "hash"          (string)  The end block hash
+      "height"        (numeric) The height of the end block
+    }
+}
+
+Examples:
+> zcash-cli getaddressdeltas '{"addresses": ["tmYXBYJj1K7vhejSec5osXK2QsGa5MTisUQ"], "start": 1000, "end": 2000, "chainInfo": true}'
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getaddressdeltas", "params": [{"addresses": ["tmYXBYJj1K7vhejSec5osXK2QsGa5MTisUQ"], "start": 1000, "end": 2000, "chainInfo": true}] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+
+getaddressmempool - Zcash 6.2.0 RPC
+getaddressmempool {"addresses": ["taddr", ...]}
+
+Returns all mempool deltas for an address.
+
+WARNING: getaddressmempool is disabled.
+To enable it, restart zcashd with the following command line options:
+-experimentalfeatures and -insightexplorer or:
+-experimentalfeatures and -lightwalletd
+
+Alternatively add these two lines to the zcash.conf file:
+
+experimentalfeatures=1
+insightexplorer=1
+
+or:
+
+experimentalfeatures=1
+lightwalletd=1
+
+Arguments:
+{
+  "addresses":
+    [
+      "address"  (string) The base58check encoded address
+      ,...
+    ]
+}
+(or)
+"address"  (string) The base58check encoded address
+
+Result:
+[
+  {
+    "address"  (string) The base58check encoded address
+    "txid"  (string) The related txid
+    "index"  (number) The related input or output index
+    "satoshis"  (number) The difference of zatoshis
+    "timestamp"  (number) The time the transaction entered the mempool (seconds)
+    "prevtxid"  (string) The previous txid (if spending)
+    "prevout"  (string) The previous transaction output index (if spending)
+  }
+]
+
+Examples:
+> zcash-cli getaddressmempool '{"addresses": ["tmYXBYJj1K7vhejSec5osXK2QsGa5MTisUQ"]}'
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getaddressmempool", "params": [{"addresses": ["tmYXBYJj1K7vhejSec5osXK2QsGa5MTisUQ"]}] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+Zcash 6.2.0 RPC Docs
+getaddresstxids - Zcash 6.2.0 RPC
+getaddresstxids {"addresses": ["taddr", ...], ("start": n), ("end": n)}
+
+Returns the txids for given transparent addresses within the given (inclusive)
+
+block height range, default is the full blockchain.
+If start or end are not specified, they default to zero.
+If start is greater than the latest block height, it's interpreted as that height.
+
+If end is zero, it's interpreted as the latest block height.
+
+The returned txids are in the order they appear in blocks, which
+ensures that they are topologically sorted (i.e. parent txids
+appear before child txids).
+
+WARNING: getaddresstxids is disabled.
+To enable it, restart zcashd with the following command line options:
+-experimentalfeatures and -insightexplorer or:
+-experimentalfeatures and -lightwalletd
+
+Alternatively add these two lines to the zcash.conf file:
+
+experimentalfeatures=1
+insightexplorer=1
+
+or:
+
+experimentalfeatures=1
+lightwalletd=1
+
+Arguments:
+{
+  "addresses":
+    [
+      "taddr"  (string) The base58check encoded address
+      ,...
+    ]
+  "start" (number, optional) The start block height
+  "end" (number, optional) The end block height
+}
+(or)
+"address"  (string) The base58check encoded address
+
+Result:
+[
+  "transactionid"  (string) The transaction id
+  ,...
+]
+
+Examples:
+> zcash-cli getaddresstxids '{"addresses": ["tmYXBYJj1K7vhejSec5osXK2QsGa5MTisUQ"], "start": 1000, "end": 2000}'
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getaddresstxids", "params": [{"addresses": ["tmYXBYJj1K7vhejSec5osXK2QsGa5MTisUQ"], "start": 1000, "end": 2000}] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+
+Zcash 6.2.0 RPC Docs
+getaddressutxos - Zcash 6.2.0 RPC
+getaddressutxos {"addresses": ["taddr", ...], ("chainInfo": true|false)}
+
+Returns all unspent outputs for an address.
+
+WARNING: getaddressutxos is disabled.
+To enable it, restart zcashd with the following command line options:
+-experimentalfeatures and -insightexplorer or:
+-experimentalfeatures and -lightwalletd
+
+Alternatively add these two lines to the zcash.conf file:
+
+experimentalfeatures=1
+insightexplorer=1
+
+or:
+
+experimentalfeatures=1
+lightwalletd=1
+
+Arguments:
+{
+  "addresses":
+    [
+      "address"  (string) The base58check encoded address
+      ,...
+    ],
+  "chainInfo"  (boolean, optional, default=false) Include chain info with results
+}
+(or)
+"address"  (string) The base58check encoded address
+
+Result
+[
+  {
+    "address"  (string) The address base58check encoded
+    "txid"  (string) The output txid
+    "height"  (number) The block height
+    "outputIndex"  (number) The output index
+    "script"  (string) The script hex encoded
+    "satoshis"  (number) The number of zatoshis of the output
+  }, ...
+]
+
+(or, if chainInfo is true):
+
+{
+  "utxos":
+    [
+      {
+        "address"     (string)  The address base58check encoded
+        "txid"        (string)  The output txid
+        "height"      (number)  The block height
+        "outputIndex" (number)  The output index
+        "script"      (string)  The script hex encoded
+        "satoshis"    (number)  The number of zatoshis of the output
+      }, ...
+    ],
+  "hash"              (string)  The block hash
+  "height"            (numeric) The block height
+}
+
+Examples:
+> zcash-cli getaddressutxos '{"addresses": ["tmYXBYJj1K7vhejSec5osXK2QsGa5MTisUQ"], "chainInfo": true}'
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getaddressutxos", "params": [{"addresses": ["tmYXBYJj1K7vhejSec5osXK2QsGa5MTisUQ"], "chainInfo": true}] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+
+Zcash 6.2.0 RPC Docs
+getblock - Zcash 6.2.0 RPC
+getblock "hash|height" ( verbosity )
+
+If verbosity is 0, returns a string that is serialized, hex-encoded data for the block.
+If verbosity is 1, returns an Object with information about the block.
+If verbosity is 2, returns an Object with information about the block and information about each transaction. 
+
+Arguments:
+1. "hash|height"          (string, required) The block hash or height. Height can be negative where -1 is the last known valid block
+2. verbosity              (numeric, optional, default=1) 0 for hex encoded data, 1 for a json object, and 2 for json object with transaction data
+
+Result (for verbosity = 0):
+"data"             (string) A string that is serialized, hex-encoded data for the block.
+
+Result (for verbosity = 1):
+{
+  "hash" : "hash",       (string) the block hash (same as provided hash)
+  "confirmations" : n,   (numeric) The number of confirmations, or -1 if the block is not on the main chain
+  "size" : n,            (numeric) The block size
+  "height" : n,          (numeric) The block height or index (same as provided height)
+  "version" : n,         (numeric) The block version
+  "merkleroot" : "xxxx", (string) The merkle root
+  "finalsaplingroot" : "xxxx", (string) The root of the Sapling commitment tree after applying this block
+  "finalorchardroot" : "xxxx", (string, optional) The root of the Orchard commitment tree after
+                               applying this block. Omitted for blocks prior to NU5 activation. This
+                               will be the null hash if this block has never been connected to a
+                               main chain.
+                               NB: The serialized representation of this field returned by this method
+                                   was byte-flipped relative to its representation in the `getrawtransaction`
+                                   output in prior releases up to and including v5.2.0. This has now been
+                                   rectified.
+  "tx" : [               (array of string) The transaction ids
+     "transactionid"     (string) The transaction id
+     ,...
+  ],
+  "time" : ttt,          (numeric) The block time in seconds since epoch (Jan 1 1970 GMT)
+  "nonce" : n,           (numeric) The nonce
+  "bits" : "1d00ffff",   (string) The bits
+  "difficulty" : x.xxx,  (numeric) The difficulty
+  "chainSupply": {          (object) information about the total supply
+      "monitored": xx,           (boolean) true if the total supply is being monitored
+      "chainValue": xxxxxx,      (numeric, optional) total chain supply after this block, in ZEC
+      "chainValueZat": xxxxxx,   (numeric, optional) total chain supply after this block, in zatoshis
+      "valueDelta": xxxxxx,      (numeric, optional) change to the chain supply produced by this block, in ZEC
+      "valueDeltaZat": xxxxxx,   (numeric, optional) change to the chain supply produced by this block, in zatoshis
+  },
+  "valuePools": [            (array) information about each value pool
+      {
+          "id": "xxxx",            (string) name of the pool
+          "monitored": xx,           (boolean) true if the pool is being monitored
+          "chainValue": xxxxxx,      (numeric, optional) total amount in the pool, in ZEC
+          "chainValueZat": xxxxxx,   (numeric, optional) total amount in the pool, in zatoshis
+          "valueDelta": xxxxxx,      (numeric, optional) change to the amount in the pool produced by this block, in ZEC
+          "valueDeltaZat": xxxxxx,   (numeric, optional) change to the amount in the pool produced by this block, in zatoshis
+      }, ...
+  ],
+  "trees": {                 (object) information about the note commitment trees
+      "sapling": {             (object, optional)
+          "size": n,             (numeric) the total number of Sapling note commitments as of the end of this block
+      },
+      "orchard": {             (object, optional)
+          "size": n,             (numeric) the total number of Orchard note commitments as of the end of this block
+      },
+  },
+  "previousblockhash" : "hash",  (string) The hash of the previous block
+  "nextblockhash" : "hash"       (string) The hash of the next block
+}
+
+Result (for verbosity = 2):
+{
+  ...,                     Same output as verbosity = 1.
+  "tx" : [               (array of Objects) The transactions in the format of the getrawtransaction RPC. Different from verbosity = 1 "tx" result.
+         ,...
+  ],
+  ,...                     Same output as verbosity = 1.
+}
+
+Examples:
+> zcash-cli getblock "00000000febc373a1da2bd9f887b105ad79ddc26ac26c2b28652d64e5207c5b5"
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getblock", "params": ["00000000febc373a1da2bd9f887b105ad79ddc26ac26c2b28652d64e5207c5b5"] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+> zcash-cli getblock 12800
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getblock", "params": [12800] }' -H 'content-type: text/plain;' 
+
+
+
+Zcash 6.2.0 RPC Docs
+getbestblockhash - Zcash 6.2.0 RPC
+getbestblockhash
+
+Returns the hash of the best (tip) block in the longest block chain.
+
+Result
+"hex"      (string) the block hash hex encoded
+
+Examples
+> zcash-cli getbestblockhash 
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getbestblockhash", "params": [] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+Zcash 6.2.0 RPC Docs
+getblockchaininfo - Zcash 6.2.0 RPC
+getblockchaininfo
+Returns an object containing various state info regarding block chain processing.
+
+Note that when the chain tip is at the last block before a network upgrade activation,
+consensus.chaintip != consensus.nextblock.
+
+Result:
+{
+  "chain": "xxxx",        (string) current network name as defined in BIP70 (main, test, regtest)
+  "blocks": xxxxxx,         (numeric) the current number of blocks processed in the server
+  "initial_block_download_complete": xx, (boolean) true if the initial download of the blockchain is complete
+  "headers": xxxxxx,        (numeric) the current number of headers we have validated
+  "bestblockhash": "...", (string) the hash of the currently best block
+  "difficulty": xxxxxx,     (numeric) the current difficulty
+  "verificationprogress": xxxx, (numeric) estimate of verification progress [0..1]
+  "estimatedheight": xxxx,  (numeric) if syncing, the estimated height of the chain, else the current best height
+  "chainwork": "xxxx"     (string) total amount of work in active chain, in hexadecimal
+  "size_on_disk": xxxxxx,       (numeric) the estimated size of the block and undo files on disk
+  "commitments": xxxxxx,    (numeric) the current number of note commitments in the commitment tree
+  "chainSupply": {          (object) information about the total supply
+      "monitored": xx,           (boolean) true if the total supply is being monitored
+      "chainValue": xxxxxx,      (numeric, optional) total chain supply after this block, in ZEC
+      "chainValueZat": xxxxxx,   (numeric, optional) total chain supply after this block, in zatoshis
+  }
+  "valuePools": [            (array) information about each value pool
+      {
+          "id": "xxxx",            (string) name of the pool
+          "monitored": xx,           (boolean) true if the pool is being monitored
+          "chainValue": xxxxxx,      (numeric, optional) total amount in the pool, in ZEC
+          "chainValueZat": xxxxxx,   (numeric, optional) total amount in the pool, in zatoshis
+      }, ...
+  ]
+  "softforks": [            (array) status of softforks in progress
+     {
+        "id": "xxxx",        (string) name of softfork
+        "version": xx,         (numeric) block version
+        "enforce": {           (object) progress toward enforcing the softfork rules for new-version blocks
+           "status": xx,       (boolean) true if threshold reached
+           "found": xx,        (numeric) number of blocks with the new version found
+           "required": xx,     (numeric) number of blocks required to trigger
+           "window": xx,       (numeric) maximum size of examined window of recent blocks
+        },
+        "reject": { ... }      (object) progress toward rejecting pre-softfork blocks (same fields as "enforce")
+     }, ...
+  ],
+  "upgrades": {                (object) status of network upgrades
+     "xxxx" : {                (string) branch ID of the upgrade
+        "name": "xxxx",        (string) name of upgrade
+        "activationheight": xxxxxx,  (numeric) block height of activation
+        "status": "xxxx",      (string) status of upgrade
+        "info": "xxxx",        (string) additional information about upgrade
+     }, ...
+  },
+  "consensus": {               (object) branch IDs of the current and upcoming consensus rules
+     "chaintip": "xxxxxxxx",   (string) branch ID used to validate the current chain tip
+     "nextblock": "xxxxxxxx"   (string) branch ID that the next block will be validated under
+  }
+}
+
+Examples:
+> zcash-cli getblockchaininfo 
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getblockchaininfo", "params": [] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+getblockcount - Zcash 6.2.0 RPC
+getblockcount
+
+Returns the height of the most recent block in the best valid block chain (equivalently,
+the number of blocks in this chain excluding the genesis block).
+
+Result:
+n    (numeric) The height of the most recent block.
+
+Examples:
+> zcash-cli getblockcount 
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getblockcount", "params": [] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+getblockdeltas - Zcash 6.2.0 RPC
+getblockdeltas "blockhash"
+
+Returns information about the given block and its transactions.
+
+WARNING: getblockdeltas is disabled.
+To enable it, restart zcashd with the following command line options:
+-experimentalfeatures and -insightexplorer or:
+-experimentalfeatures and -lightwalletd
+
+Alternatively add these two lines to the zcash.conf file:
+
+experimentalfeatures=1
+insightexplorer=1
+
+or:
+
+experimentalfeatures=1
+lightwalletd=1
+
+Arguments:
+1. "hash"          (string, required) The block hash
+
+Result:
+{
+  "hash": "hash",              (string) block ID
+  "confirmations": n,          (numeric) number of confirmations
+  "size": n,                   (numeric) block size in bytes
+  "height": n,                 (numeric) block height
+  "version": n,                (numeric) block version (e.g. 4)
+  "merkleroot": "hash",        (hexstring) block Merkle root
+  "deltas": [
+    {
+      "txid": "hash",          (hexstring) transaction ID
+      "index": n,              (numeric) The offset of the tx in the block
+      "inputs": [                (array of json objects)
+        {
+          "address": "taddr",  (string) transparent address
+          "satoshis": n,       (numeric) negative of spend amount
+          "index": n,          (numeric) vin index
+          "prevtxid": "hash",  (string) source utxo tx ID
+          "prevout": n         (numeric) source utxo index
+        }, ...
+      ],
+      "outputs": [             (array of json objects)
+        {
+          "address": "taddr",  (string) transparent address
+          "satoshis": n,       (numeric) amount
+          "index": n           (numeric) vout index
+        }, ...
+      ]
+    }, ...
+  ],
+  "time" : n,                  (numeric) The block version
+  "mediantime": n,             (numeric) The most recent blocks' ave time
+  "nonce" : "nonce",           (hex string) The nonce
+  "bits" : "1d00ffff",         (hex string) The bits
+  "difficulty": n,             (numeric) the current difficulty
+  "chainwork": "xxxx"          (hex string) total amount of work in active chain
+  "previousblockhash" : "hash",(hex string) The hash of the previous block
+  "nextblockhash" : "hash"     (hex string) The hash of the next block
+}
+
+Examples:
+> zcash-cli getblockdeltas 00227e566682aebd6a7a5b772c96d7a999cadaebeaf1ce96f4191a3aad58b00b
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getblockdeltas", "params": ["00227e566682aebd6a7a5b772c96d7a999cadaebeaf1ce96f4191a3aad58b00b"] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+
+Zcash 6.2.0 RPC Docs
+getblockhash - Zcash 6.2.0 RPC
+getblockhash height
+
+Returns hash of block in best-block-chain at height provided.
+
+Arguments:
+1. height         (numeric, required) The height index
+
+Result:
+"hash"         (string) The block hash
+
+Examples:
+> zcash-cli getblockhash 1000
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getblockhash", "params": [1000] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+getblockheader - Zcash 6.2.0 RPC
+getblockheader "hash" ( verbose )
+
+If verbose is false, returns a string that is serialized, hex-encoded data for blockheader 'hash'.
+If verbose is true, returns an Object with information about blockheader <hash>.
+
+Arguments:
+1. "hash"          (string, required) The block hash
+2. verbose           (boolean, optional, default=true) true for a json object, false for the hex encoded data
+
+Result (for verbose = true):
+{
+  "hash" : "hash",     (string) the block hash (same as provided)
+  "confirmations" : n,   (numeric) The number of confirmations, or -1 if the block is not on the main chain
+  "height" : n,          (numeric) The block height or index
+  "version" : n,         (numeric) The block version
+  "merkleroot" : "xxxx", (string) The merkle root
+  "finalsaplingroot" : "xxxx", (string) The root of the Sapling commitment tree after applying this block
+  "time" : ttt,          (numeric) The block time in seconds since epoch (Jan 1 1970 GMT)
+  "nonce" : n,           (numeric) The nonce
+  "bits" : "1d00ffff", (string) The bits
+  "difficulty" : x.xxx,  (numeric) The difficulty
+  "previousblockhash" : "hash",  (string) The hash of the previous block
+  "nextblockhash" : "hash"       (string) The hash of the next block
+}
+
+Result (for verbose=false):
+"data"             (string) A string that is serialized, hex-encoded data for block 'hash'.
+
+Examples:
+> zcash-cli getblockheader "00000000c937983704a73af28acdec37b049d214adbda81d7e2a3dd146f6ed09"
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getblockheader", "params": ["00000000c937983704a73af28acdec37b049d214adbda81d7e2a3dd146f6ed09"] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+
+
+getchaintips - Zcash 6.2.0 RPC
+getchaintips
+Return information about all known tips in the block tree, including the main chain as well as orphaned branches.
+
+Result:
+[
+  {
+    "height": xxxx,         (numeric) height of the chain tip
+    "hash": "xxxx",         (string) block hash of the tip
+    "branchlen": 0          (numeric) zero for main chain
+    "status": "active"      (string) "active" for the main chain
+  },
+  {
+    "height": xxxx,
+    "hash": "xxxx",
+    "branchlen": 1          (numeric) length of branch connecting the tip to the main chain
+    "status": "xxxx"        (string) status of the chain (active, valid-fork, valid-headers, headers-only, invalid)
+  }
+]
+Possible values for status:
+1.  "invalid"               This branch contains at least one invalid block
+2.  "headers-only"          Not all blocks for this branch are available, but the headers are valid
+3.  "valid-headers"         All blocks are available for this branch, but they were never fully validated
+4.  "valid-fork"            This branch is not part of the active chain, but is fully validated
+5.  "active"                This is the tip of the active main chain, which is certainly valid
+
+Examples:
+> zcash-cli getchaintips 
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getchaintips", "params": [] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+getdifficulty - Zcash 6.2.0 RPC
+getdifficulty
+
+Returns the proof-of-work difficulty as a multiple of the minimum difficulty.
+
+Result:
+n.nnn       (numeric) the proof-of-work difficulty as a multiple of the minimum difficulty.
+
+Examples:
+> zcash-cli getdifficulty 
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getdifficulty", "params": [] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+getmempoolinfo - Zcash 6.2.0 RPC
+getmempoolinfo
+
+Returns details on the active state of the TX memory pool.
+
+Result:
+{
+  "size": xxxxx                (numeric) Current tx count
+  "bytes": xxxxx               (numeric) Sum of all tx sizes
+  "usage": xxxxx               (numeric) Total memory usage for the mempool
+  "fullyNotified": true|false  (boolean, regtest only)
+                               Whether the node has finished notifying all
+                               listeners/tests about every transaction currently
+                               in the mempool. This key is returned only when the
+                               node is running in regtest.
+}
+
+Examples:
+> zcash-cli getmempoolinfo 
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getmempoolinfo", "params": [] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+getrawmempool - Zcash 6.2.0 RPC
+getrawmempool ( verbose )
+
+Returns all transaction ids in memory pool as a json array of string transaction ids.
+
+Arguments:
+1. verbose           (boolean, optional, default=false) true for a json object, false for array of transaction ids
+
+Result: (for verbose = false):
+[                     (json array of string)
+  "transactionid"     (string) The transaction id
+  ,...
+]
+
+Result: (for verbose = true):
+{                           (json object)
+  "transactionid" : {       (json object)
+    "size" : n,             (numeric) transaction size in bytes
+    "fee" : n,              (numeric) transaction fee in ZEC
+    "modifiedfee" : n,      (numeric) transaction fee with fee deltas used for mining priority
+    "time" : n,             (numeric) local time transaction entered pool in seconds since 1 Jan 1970 GMT
+    "height" : n,           (numeric) block height when transaction entered pool
+    "descendantcount" : n,  (numeric) number of in-mempool descendant transactions (including this one)
+    "descendantsize" : n,   (numeric) size of in-mempool descendants (including this one)
+    "descendantfees" : n,   (numeric) modified fees (see "modifiedfee" above) of in-mempool descendants (including this one)
+    "depends" : [           (array) unconfirmed transactions used as inputs for this transaction
+        "transactionid",    (string) parent transaction id
+       ... ]
+  }, ...
+}
+
+Examples
+> zcash-cli getrawmempool true
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getrawmempool", "params": [true] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+getspentinfo - Zcash 6.2.0 RPC
+getspentinfo {"txid": "txidhex", "index": n}
+
+Returns the txid and index where an output is spent.
+
+WARNING: getspentinfo is disabled.
+To enable it, restart zcashd with the following command line options:
+-experimentalfeatures and -insightexplorer
+
+Alternatively add these two lines to the zcash.conf file:
+
+experimentalfeatures=1
+insightexplorer=1
+
+Arguments:
+{
+  "txid"   (string) The hex string of the txid
+  "index"  (number) The vout (output) index
+}
+
+Result:
+{
+  "txid"   (string) The transaction id
+  "index"  (number) The spending (vin, input) index
+  ,...
+}
+
+Examples:
+> zcash-cli getspentinfo '{"txid": "33990288fb116981260be1de10b8c764f997674545ab14f9240f00346333b780", "index": 4}'
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getspentinfo", "params": [{"txid": "33990288fb116981260be1de10b8c764f997674545ab14f9240f00346333b780", "index": 4}] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+gettxout - Zcash 6.2.0 RPC
+gettxout "txid" n ( includemempool )
+
+Returns details about an unspent transaction output.
+
+Arguments:
+1. "txid"       (string, required) The transaction id
+2. n              (numeric, required) vout value
+3. includemempool  (boolean, optional) Whether to include the mempool
+
+Result:
+{
+  "bestblock" : "hash",    (string) the block hash
+  "confirmations" : n,       (numeric) The number of confirmations
+  "value" : x.xxx,           (numeric) The transaction value in ZEC
+  "scriptPubKey" : {         (json object)
+     "asm" : "code",       (string) 
+     "hex" : "hex",        (string) 
+     "reqSigs" : n,          (numeric) Number of required signatures
+     "type" : "pubkeyhash", (string) The type, eg pubkeyhash
+     "addresses" : [          (array of string) array of Zcash addresses
+        "zcashaddress"        (string) Zcash address
+        ,...
+     ]
+  },
+  "version" : n,              (numeric) The version
+  "coinbase" : true|false     (boolean) Coinbase or not
+}
+
+Examples:
+
+Get unspent transactions
+> zcash-cli listunspent 
+
+View the details
+> zcash-cli gettxout "txid" 1
+
+As a json rpc call
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "gettxout", "params": ["txid", 1] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+verifychain - Zcash 6.2.0 RPC
+verifychain ( checklevel numblocks )
+
+Verifies blockchain database.
+
+Arguments:
+1. checklevel   (numeric, optional, 0-4, default=3) How thorough the block verification is.
+2. numblocks    (numeric, optional, default=288, 0=all) The number of blocks to check.
+
+Result:
+true|false       (boolean) Verified or not
+
+Examples:
+> zcash-cli verifychain 
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "verifychain", "params": [] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+verifytxoutproof - Zcash 6.2.0 RPC
+verifytxoutproof "proof"
+
+Verifies that a proof points to a transaction in a block, returning the transaction it commits to
+and throwing an RPC error if the block is not in our best chain
+
+Arguments:
+1. "proof"    (string, required) The hex-encoded proof generated by gettxoutproof
+
+Result:
+["txid"]      (array, strings) The txid(s) which the proof commits to, or empty array if the proof is invalid
+
+
+
+
+
+z_getsubtreesbyindex - Zcash 6.2.0 RPC
+z_getsubtreesbyindex "pool" start_index ( limit )
+Returns roots of subtrees of the given pool's note commitment tree. Each value returned
+in the `subtrees` field is the Merkle root of a subtree containing 2^16 leaves.
+
+WARNING: z_getsubtreesbyindex is disabled.
+To enable it, restart zcashd with the following command line options:
+-experimentalfeatures and -lightwalletd
+
+Alternatively add these two lines to the zcash.conf file:
+
+experimentalfeatures=1
+lightwalletd=1
+
+Arguments:
+1. "pool"        (string, required) The pool from which subtrees should be returned. Either "sapling" or "orchard".
+2. start_index   (numeric, required) The index of the first 2^16-leaf subtree to return.
+2. limit         (numeric, optional) The maximum number of subtree values to return.
+
+Result:
+{
+  "pool" : "sapling|orchard", (string) The shielded pool to which the subtrees belong
+  "start_index": n,      (numeric) The index of the first subtree
+  "subtrees": [          (array) A sequential list of complete subtrees
+    {
+      "root": "hash",    (string) Merkle root of the 2^16-leaf subtree
+      "end_height": n,   (numeric) height of the block containing the note that completed this subtree
+    }, ...
+  ]
+}
+
+Examples:
+> zcash-cli z_getsubtreesbyindex "sapling", 0
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "z_getsubtreesbyindex", "params": ["orchard", 3, 7] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+
+z_gettreestate - Zcash 6.2.0 RPC
+z_gettreestate "hash|height"
+Return information about the given block's tree state.
+
+Arguments:
+1. "hash|height"          (string, required) The block hash or height. Height can be negative where -1 is the last known valid block
+
+Result:
+{
+  "hash": "hash",         (string) hex block hash
+  "height": n,              (numeric) block height
+  "time": n,                (numeric) block time: UTC seconds since the Unix 1970-01-01 epoch
+  "sprout": {
+    "skipHash": "hash",   (string) hash of most recent block with more information
+    "commitments": {
+      "finalRoot": "hex", (string)
+      "finalState": "hex" (string)
+    }
+  },
+  "sapling": {
+    "skipHash": "hash",   (string) hash of most recent block with more information
+    "commitments": {
+      "finalRoot": "hex", (string)
+                          NB: The serialized representation of this field returned by this method
+                              was byte-flipped relative to its representation in the `getrawtransaction`
+                              output in prior releases up to and including v5.2.0. This has now been
+                              rectified.
+      "finalState": "hex" (string)
+    }
+  },
+  "orchard": {
+    "skipHash": "hash",   (string) hash of most recent block with more information
+    "commitments": {
+      "finalRoot": "hex", (string)
+      "finalState": "hex" (string)
+    }
+  }
+}
+
+Examples:
+> zcash-cli z_gettreestate "00000000febc373a1da2bd9f887b105ad79ddc26ac26c2b28652d64e5207c5b5"
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "z_gettreestate", "params": ["00000000febc373a1da2bd9f887b105ad79ddc26ac26c2b28652d64e5207c5b5"] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+> zcash-cli z_gettreestate 12800
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "z_gettreestate", "params": [12800] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+getexperimentalfeatures - Zcash 6.2.0 RPC
+getexperimentalfeatures
+
+Returns enabled experimental features.
+
+Result:
+  [
+     "experimentalfeature"     (string) The enabled experimental feature
+     ,...
+  ],
+
+Examples:
+> zcash-cli getexperimentalfeatures 
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getexperimentalfeatures", "params": [] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+getinfo - Zcash 6.2.0 RPC
+getinfo
+Returns an object containing various state info.
+
+Result:
+{
+  "version": xxxxx,           (numeric) the server version
+  "build": xxxxx,             (string)  the build number
+  "subversion": xxxxx,        (string)  the server sub-version identifier
+  "protocolversion": xxxxx,   (numeric) the protocol version
+  "walletversion": xxxxx,     (numeric, optional) the wallet version, if wallet functionality is enabled
+  "balance": xxxxxxx,         (numeric, optional) the total Zcash balance of the wallet, if wallet functionality is enabled
+  "blocks": xxxxxx,           (numeric) the current number of blocks processed in the server
+  "timeoffset": xxxxx,        (numeric) the time offset (deprecated; always 0)
+  "connections": xxxxx,       (numeric) the number of connections
+  "proxy": "host:port",     (string, optional) the proxy used by the server
+  "difficulty": xxxxxx,       (numeric) the current difficulty
+  "testnet": true|false,      (boolean) if the server is using testnet or not
+  "keypoololdest": xxxxxx,    (numeric, optional) the timestamp (seconds since GMT epoch) of the oldest pre-generated key in the key pool, if wallet functionality is enabled
+  "keypoolsize": xxxx,        (numeric, optional) how many new keys are pre-generated
+  "unlocked_until": ttt,      (numeric, optional) the timestamp in seconds since epoch (midnight Jan 1 1970 GMT) that the wallet is unlocked for transfers, or 0 if the wallet is locked, if wallet functionality is available and the wallet is encrypted
+  "paytxfee": x.xxxx,         (numeric) the transaction fee rate set in ZEC per 1000 bytes
+  "relayfee": x.xxxx,         (numeric) minimum relay fee rate for transactions in ZEC per 1000 bytes
+  "errors": "..."           (string) message describing the latest or highest-priority error
+  "errorstimestamp": "..."  (string) timestamp associated with the latest or highest-priority error
+}
+
+Examples:
+> zcash-cli getinfo 
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getinfo", "params": [] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+getmemoryinfo - Zcash 6.2.0 RPC
+getmemoryinfo
+Returns an object containing information about memory usage.
+
+Result:
+{
+  "locked": {               (json object) Information about locked memory manager
+    "used": xxxxx,          (numeric) Number of bytes used
+    "free": xxxxx,          (numeric) Number of bytes available in current arenas
+    "total": xxxxxxx,       (numeric) Total number of bytes managed
+    "locked": xxxxxx,       (numeric) Amount of bytes that succeeded locking. If this number is smaller than total, locking pages failed at some point and key data could be swapped to disk.
+    "chunks_used": xxxxx,   (numeric) Number allocated chunks
+    "chunks_free": xxxxx,   (numeric) Number unused chunks
+  }
+}
+
+Examples:
+> zcash-cli getmemoryinfo 
+
+
+help - Zcash 6.2.0 RPC
+help ( "command" )
+
+List all commands, or get help for a specified command.
+
+Arguments:
+1. "command"     (string, optional) The command to get help on
+
+Result:
+"text"     (string) The help text
+
+
+setlogfilter - Zcash 6.2.0 RPC
+setlogfilter "directives"
+
+Sets the filter to be used for selecting events to log.
+
+A filter is a comma-separated list of directives.
+The syntax for each directive is:
+
+    target[span{field=value}]=level
+
+The default filter, derived from the -debug=target flags, is:
+
+    error,main=info
+
+Passing a valid filter here will replace the existing filter.
+Passing an empty string will reset the filter to the default.
+
+Note that enabling trace-level events should always be considered
+unsafe, as they can result in sensitive information like decrypted
+notes and private keys being printed to the log output.
+
+Arguments:
+1. newFilterDirectives (string, required) The new log filter.
+
+Examples:
+> zcash-cli setlogfilter "main=info,rpc=info"
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "setlogfilter", "params": ["main=info,rpc=info"] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+z_getpaymentdisclosure - Zcash 6.2.0 RPC
+z_getpaymentdisclosure "txid" js_index output_index ("message") 
+
+Generate a payment disclosure for a given joinsplit output. This only supports Sprout.
+
+EXPERIMENTAL, DEPRECATED FEATURE
+
+WARNING: z_getpaymentdisclosure is disabled.
+To enable it, restart zcashd with the following command line options:
+-experimentalfeatures and -paymentdisclosure
+
+Alternatively add these two lines to the zcash.conf file:
+
+experimentalfeatures=1
+paymentdisclosure=1
+
+Arguments:
+1. "txid"            (string, required) 
+2. js_index          (numeric, required) 
+3. output_index      (numeric, required) 
+4. "message"         (string, optional) 
+
+Result:
+"paymentdisclosure"  (string) Hex data string, with "zpd:" prefix.
+
+Examples:
+> zcash-cli z_getpaymentdisclosure 96f12882450429324d5f3b48630e3168220e49ab7b0f066e5c2935a6b88bb0f2 0 0 "refund"
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "z_getpaymentdisclosure", "params": ["96f12882450429324d5f3b48630e3168220e49ab7b0f066e5c2935a6b88bb0f2", 0, 0, "refund"] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+
+
+z_validatepaymentdisclosure - Zcash 6.2.0 RPC
+z_validatepaymentdisclosure "paymentdisclosure"
+
+Validates a payment disclosure. This only supports Sprout.
+
+EXPERIMENTAL, DEPRECATED FEATURE
+
+WARNING: z_validatepaymentdisclosure is disabled.
+To enable it, restart zcashd with the following command line options:
+-experimentalfeatures and -paymentdisclosure
+
+Alternatively add these two lines to the zcash.conf file:
+
+experimentalfeatures=1
+paymentdisclosure=1
+
+Arguments:
+1. "paymentdisclosure"     (string, required) Hex data string, with "zpd:" prefix.
+
+Examples:
+> zcash-cli z_validatepaymentdisclosure "zpd:706462ff004c561a0447ba2ec51184e6c204..."
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "z_validatepaymentdisclosure", "params": ["zpd:706462ff004c561a0447ba2ec51184e6c204..."] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+generate - Zcash 6.2.0 RPC
+generate numblocks
+
+Mine blocks immediately (before the RPC call returns)
+
+Note: this function can only be used on the regtest network
+
+Arguments:
+1. numblocks    (numeric, required) How many blocks are generated immediately.
+
+Result
+[ blockhashes ]     (array) hashes of blocks generated
+
+Examples:
+
+Generate 11 blocks
+> zcash-cli generate 11
+
+
+
+
+getgenerate - Zcash 6.2.0 RPC
+getgenerate
+
+Return if the server is set to generate coins or not. The default is false.
+It is set with the command line argument -gen (or zcash.conf setting gen)
+It can also be set with the setgenerate call.
+
+Result
+true|false      (boolean) If the server is set to generate coins or not
+
+Examples:
+> zcash-cli getgenerate 
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getgenerate", "params": [] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+
+setgenerate - Zcash 6.2.0 RPC
+setgenerate generate ( genproclimit )
+
+Set 'generate' true or false to turn generation on or off.
+Generation is limited to 'genproclimit' processors, -1 is unlimited.
+See the getgenerate call for the current setting.
+
+Arguments:
+1. generate         (boolean, required) Set to true to turn on generation, off to turn off.
+2. genproclimit     (numeric, optional) Set the processor limit for when generation is on. Can be -1 for unlimited.
+
+Examples:
+
+Set the generation on with a limit of one processor
+> zcash-cli setgenerate true 1
+
+Check the setting
+> zcash-cli getgenerate 
+
+Turn off generation
+> zcash-cli setgenerate false
+
+Using json rpc
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "setgenerate", "params": [true, 1] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+
+addmultisigaddress - Zcash 6.2.0 RPC
+addmultisigaddress nrequired ["key",...] ( "" )
+
+Add a nrequired-to-sign transparent multisignature address to the wallet.
+Each key is a transparent Zcash address or hex-encoded secp256k1 public key.
+
+Arguments:
+1. nrequired        (numeric, required) The number of required signatures out of the n keys or addresses.
+2. "keysobject"   (string, required) A json array of Zcash addresses or hex-encoded public keys
+     [
+       "address"  (string) Zcash address or hex-encoded public key
+       ...,
+     ]
+3. (dummy)        (string, optional) DEPRECATED. If provided, MUST be set to the empty string "".
+Result:
+"zcashaddress"  (string) A Zcash address associated with the keys.
+
+Examples:
+
+Add a multisig address from 2 addresses
+> zcash-cli addmultisigaddress 2 "[\"t16sSauSf5pF2UkUwvKGq4qjNRzBZYqgEL5\",\"t171sgjn4YtPu27adkKGrdDwzRTxnRkBfKV\"]"
+
+As json rpc call
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "addmultisigaddress", "params": [2, "[\"t16sSauSf5pF2UkUwvKGq4qjNRzBZYqgEL5\",\"t171sgjn4YtPu27adkKGrdDwzRTxnRkBfKV\"]"] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+backupwallet - Zcash 6.2.0 RPC
+backupwallet "destination"
+
+Safely copies current wallet file to destination filename
+
+Arguments:
+1. "destination"   (string, required) The destination filename, saved in the directory set by -exportdir option.
+
+Result:
+"path"             (string) The full path of the destination file
+
+Examples:
+> zcash-cli backupwallet "backupdata"
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "backupwallet", "params": ["backupdata"] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+
+dumpprivkey - Zcash 6.2.0 RPC
+dumpprivkey "t-addr"
+
+Reveals the private key corresponding to 't-addr'.
+Then the importprivkey can be used with this output
+
+Arguments:
+1. "t-addr"   (string, required) The transparent address for the private key
+
+Result:
+"key"         (string) The private key
+
+Examples:
+> zcash-cli dumpprivkey "myaddress"
+> zcash-cli importprivkey "mykey"
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "dumpprivkey", "params": ["myaddress"] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+
+encryptwallet - Zcash 6.2.0 RPC
+encryptwallet "passphrase"
+
+WARNING: encryptwallet is disabled.
+To enable it, restart zcashd with the following command line options:
+-experimentalfeatures and -developerencryptwallet
+
+Alternatively add these two lines to the zcash.conf file:
+
+experimentalfeatures=1
+developerencryptwallet=1
+
+Encrypts the wallet with 'passphrase'. This is for first time encryption.
+After this, any calls that interact with private keys such as sending or signing 
+will require the passphrase to be set prior the making these calls.
+Use the walletpassphrase call for this, and then walletlock call.
+If the wallet is already encrypted, use the walletpassphrasechange call.
+Note that this will shutdown the server.
+Wallet encryption is experimental, and this API should be used with caution.
+
+Arguments:
+1. "passphrase"    (string) The pass phrase to encrypt the wallet with. It must be at least 1 character, but should be long.
+
+Examples:
+
+Encrypt you wallet
+> zcash-cli encryptwallet "my pass phrase"
+
+Now set the passphrase to use the wallet, such as for signing or sending Zcash
+> zcash-cli walletpassphrase "my pass phrase"
+
+Now we can so something like sign
+> zcash-cli signmessage "zcashaddress" "test message"
+
+Now lock the wallet again by removing the passphrase
+> zcash-cli walletlock 
+
+As a JSON RPC call
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "encryptwallet", "params": ["my pass phrase"] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+
+getbalance - Zcash 6.2.0 RPC
+getbalance ( "(dummy)" minconf includeWatchonly inZat asOfHeight )
+
+Returns the wallet's available transparent balance. This total
+currently includes transparent balances associated with unified
+accounts. Prefer to use `z_getbalanceforaccount` instead.
+
+Arguments:
+1. (dummy)          (string, optional) Remains for backward compatibility. Must be excluded or set to "*" or "".
+2. minconf          (numeric, optional, default=0) Only include transactions confirmed at least this many times.
+3. includeWatchonly (bool, optional, default=false) Also include balance in watchonly addresses (see 'importaddress')
+4. inZat            (bool, optional, default=false) Get the result amount in zatoshis (as an integer).
+5. asOfHeight       (numeric, optional, default=-1) Execute the query as if it
+                    were run when the blockchain was at the height specified by
+                    this argument. The default is to use the entire blockchain
+                    that the node is aware of. -1 can be used as in other RPC
+                    calls to indicate the current height (including the
+                    mempool), but this does not support negative values in
+                    general. A “future” height will fall back to the current
+                    height. Any explicit value will cause the mempool to be
+                    ignored, meaning no unconfirmed tx will be considered.
+                    `minconf` must be at least 1 when `asOfHeight` is provided.
+
+Result:
+amount              (numeric) The total amount in ZEC(or zatoshis if inZat is true) received.
+
+Bitcoin compatibility:
+Compatible with up to three arguments.
+Examples:
+
+The total amount in the wallet
+> zcash-cli getbalance *
+
+The total amount in the wallet at least 5 blocks confirmed
+> zcash-cli getbalance "*" 6
+
+As a JSON RPC call
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getbalance", "params": ["*", 6] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+
+
+
+getnewaddress - Zcash 6.2.0 RPC
+getnewaddress ( "" )
+
+getnewaddress is DISABLED and will be removed in a future release.
+Please use z_getnewaccount and z_getaddressforaccount instead.
+You can restart the node with `-allowdeprecated=getnewaddress`
+to re-enable this method during its deprecation period.
+See https://zcash.github.io/zcash/user/deprecation.html for more information.
+
+Returns a new transparent Zcash address.
+Payments received by this API are visible on-chain and do not otherwise
+provide privacy protections; they should only be used in circumstances 
+where it is necessary to interoperate with legacy Bitcoin infrastructure.
+
+Arguments:
+1. (dummy)       (string, optional) DEPRECATED. If provided, it MUST be set to the empty string "". Passing any other string will result in an error.
+
+Result:
+"zcashaddress"    (string) The new transparent Zcash address
+
+Examples:
+> zcash-cli getnewaddress 
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getnewaddress", "params": [] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+
+
+getrawchangeaddress - Zcash 6.2.0 RPC
+getrawchangeaddress
+
+getrawchangeaddress is DISABLED and will be removed in a future release.
+Change addresses are a wallet-internal feature. Use a unified address
+for a dedicated change account instead.
+You can restart the node with `-allowdeprecated=getrawchangeaddress`
+to re-enable this method during its deprecation period.
+See https://zcash.github.io/zcash/user/deprecation.html for more information.
+
+Returns a new transparent Zcash address for receiving change.
+This is for use with raw transactions, NOT normal use. Additionally,
+the resulting address does not correspond to the "change" HD derivation
+path.
+
+Result:
+"address"    (string) The transparent address
+
+Examples:
+> zcash-cli getrawchangeaddress 
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getrawchangeaddress", "params": [] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+
+
+getreceivedbyaddress - Zcash 6.2.0 RPC
+getreceivedbyaddress "zcashaddress" ( minconf inZat asOfHeight )
+
+Returns the total amount received by the given transparent Zcash address in transactions with at least minconf confirmations.
+
+Arguments:
+1. "zcashaddress"  (string, required) The Zcash address for transactions.
+2. minconf         (numeric, optional, default=1) Only include transactions confirmed at least this many times.
+3. inZat           (bool, optional, default=false) Get the result amount in zatoshis (as an integer).
+4. asOfHeight       (numeric, optional, default=-1) Execute the query as if it
+                    were run when the blockchain was at the height specified by
+                    this argument. The default is to use the entire blockchain
+                    that the node is aware of. -1 can be used as in other RPC
+                    calls to indicate the current height (including the
+                    mempool), but this does not support negative values in
+                    general. A “future” height will fall back to the current
+                    height. Any explicit value will cause the mempool to be
+                    ignored, meaning no unconfirmed tx will be considered.
+                    `minconf` must be at least 1 when `asOfHeight` is provided.
+
+Result:
+amount   (numeric) The total amount in ZEC(or zatoshis if inZat is true) received at this address.
+
+Bitcoin compatibility:
+Compatible with up to two arguments.
+Examples:
+
+The amount from transactions with at least 1 confirmation
+> zcash-cli getreceivedbyaddress "t14oHp2v54vfmdgQ3v3SNuQga8JKHTNi2a1"
+
+The amount including unconfirmed transactions, zero confirmations
+> zcash-cli getreceivedbyaddress "t14oHp2v54vfmdgQ3v3SNuQga8JKHTNi2a1" 0
+
+The amount with at least 6 confirmations, very safe
+> zcash-cli getreceivedbyaddress "t14oHp2v54vfmdgQ3v3SNuQga8JKHTNi2a1" 6
+
+As a JSON RPC call
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getreceivedbyaddress", "params": ["t14oHp2v54vfmdgQ3v3SNuQga8JKHTNi2a1", 6] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+
+gettransaction - Zcash 6.2.0 RPC
+gettransaction "txid" ( includeWatchonly verbose asOfHeight )
+
+Returns detailed information about in-wallet transaction <txid>. This does not
+include complete information about shielded components of the transaction; to obtain
+details about shielded components of the transaction use `z_viewtransaction`.
+
+Arguments:
+1. "txid"    (string, required) The transaction id
+2. includeWatchonly    (bool, optional, default=false) Whether to include watchonly addresses in balance calculation and details[]
+3. verbose       (bool, optional, default=false) Whether to include a `decoded` field containing the decoded transaction (equivalent to RPC decoderawtransaction). Currently, only the default value is supported.
+4. asOfHeight       (numeric, optional, default=-1) Execute the query as if it
+                    were run when the blockchain was at the height specified by
+                    this argument. The default is to use the entire blockchain
+                    that the node is aware of. -1 can be used as in other RPC
+                    calls to indicate the current height (including the
+                    mempool), but this does not support negative values in
+                    general. A “future” height will fall back to the current
+                    height. Any explicit value will cause the mempool to be
+                    ignored, meaning no unconfirmed tx will be considered.
+
+Result:
+{
+  "status" : "mined|waiting|expiringsoon|expired",    (string) The transaction status, can be 'mined', 'waiting', 'expiringsoon' or 'expired'
+  "version" : "x",       (string) The transaction version
+  "amount" : x.xxx,        (numeric) The transaction amount in ZEC
+  "amountZat" : x          (numeric) The amount in zatoshis
+  "confirmations" : n,     (numeric) The number of confirmations
+  "blockhash" : "hash",  (string) The block hash
+  "blockindex" : xx,       (numeric) The block index
+  "blocktime" : ttt,       (numeric) The time in seconds since epoch (1 Jan 1970 GMT)
+  "txid" : "transactionid",   (string) The transaction id.
+  "time" : ttt,            (numeric) The transaction time in seconds since epoch (1 Jan 1970 GMT)
+  "timereceived" : ttt,    (numeric) The time received in seconds since epoch (1 Jan 1970 GMT)
+  "details" : [
+    {
+      "address" : "zcashaddress",   (string) The Zcash address involved in the transaction
+      "category" : "send|receive",    (string) The category, either 'send' or 'receive'
+      "amount" : x.xxx                  (numeric) The amount in ZEC
+      "amountZat" : x                   (numeric) The amount in zatoshis
+      "vout" : n,                       (numeric) the vout value
+    }
+    ,...
+  ],
+  "vjoinsplit" : (DEPRECATED) [
+    {
+      "anchor" : "treestateref",          (string) Merkle root of note commitment tree
+      "nullifiers" : [ string, ... ]      (string) Nullifiers of input notes
+      "commitments" : [ string, ... ]     (string) Note commitments for note outputs
+      "macs" : [ string, ... ]            (string) Message authentication tags
+      "vpub_old" : x.xxx                  (numeric) The amount removed from the transparent value pool
+      "vpub_new" : x.xxx,                 (numeric) The amount added to the transparent value pool
+    }
+    ,...
+  ],
+  "hex" : "data"         (string) Raw data for transaction
+}
+
+Bitcoin compatibility:
+Compatible up to three arguments, but can only use the default value for `verbose`.
+Examples:
+> zcash-cli gettransaction "1075db55d416d3ca199f55b6084e2115b9345e16c5cf302fc80e9d5fbf5d48d"
+> zcash-cli gettransaction "1075db55d416d3ca199f55b6084e2115b9345e16c5cf302fc80e9d5fbf5d48d" true
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "gettransaction", "params": ["1075db55d416d3ca199f55b6084e2115b9345e16c5cf302fc80e9d5fbf5d48d"] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+
+getunconfirmedbalance - Zcash 6.2.0 RPC
+getunconfirmedbalance
+Returns the server's total unconfirmed transparent balance
+
+
+
+
+getwalletinfo - Zcash 6.2.0 RPC
+getwalletinfo ( asOfHeight )
+Returns wallet state information.
+
+Arguments:
+1. asOfHeight       (numeric, optional, default=-1) Execute the query as if it
+                    were run when the blockchain was at the height specified by
+                    this argument. The default is to use the entire blockchain
+                    that the node is aware of. -1 can be used as in other RPC
+                    calls to indicate the current height (including the
+                    mempool), but this does not support negative values in
+                    general. A “future” height will fall back to the current
+                    height. Any explicit value will cause the mempool to be
+                    ignored, meaning no unconfirmed tx will be considered.
+
+Result:
+{
+  "walletversion": xxxxx,     (numeric) the wallet version
+  "balance": xxxxxxx,         (numeric) the total confirmed transparent balance of the wallet in ZEC
+  "unconfirmed_balance": xxx, (numeric, optional) the total unconfirmed transparent balance of the wallet in ZEC.
+                              Not included if `asOfHeight` is specified.
+  "immature_balance": xxxxxx, (numeric) the total immature transparent balance of the wallet in ZEC
+  "shielded_balance": xxxxxxx,  (numeric) the total confirmed shielded balance of the wallet in ZEC
+  "shielded_unconfirmed_balance": xxx, (numeric, optional) the total unconfirmed shielded balance of the wallet in ZEC.
+                              Not included if `asOfHeight` is specified.
+  "txcount": xxxxxxx,         (numeric) the total number of transactions in the wallet
+  "keypoololdest": xxxxxx,    (numeric) the timestamp (seconds since GMT epoch) of the oldest pre-generated key in the key pool
+  "keypoolsize": xxxx,        (numeric) how many new keys are pre-generated
+  "unlocked_until": ttt,      (numeric) the timestamp in seconds since epoch (midnight Jan 1 1970 GMT) that the wallet is unlocked for transfers, or 0 if the wallet is locked
+  "paytxfee": x.xxxx,         (numeric) the preferred transaction fee rate used for transactions created by legacy APIs, set in ZEC per 1000 bytes
+  "mnemonic_seedfp": "uint256", (string) the BLAKE2b-256 hash of the HD seed derived from the wallet's emergency recovery phrase
+  "legacy_seedfp": "uint256",   (string, optional) if this wallet was created prior to release 4.5.2, this will contain the BLAKE2b-256
+                                    hash of the legacy HD seed that was used to derive Sapling addresses prior to the 4.5.2 upgrade to mnemonic
+                                    emergency recovery phrases. This field was previously named "seedfp".
+}
+
+Examples:
+> zcash-cli getwalletinfo 
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "getwalletinfo", "params": [] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+
+importaddress - Zcash 6.2.0 RPC
+importaddress "address" ( "label" rescan p2sh )
+
+Adds a script (in hex) or address that can be watched as if it were in your wallet but cannot be used to spend.
+
+Arguments:
+1. "script"           (string, required) The hex-encoded script (or address)
+2. "label"            (string, optional, default="") An optional label
+3. rescan               (boolean, optional, default=true) Rescan the wallet for transactions
+4. p2sh                 (boolean, optional, default=false) Add the P2SH version of the script as well
+
+Note: This call can take a long time to complete if rescan is true.
+If you have the full public key, you should call importpubkey instead of this.
+
+Note: If you import a non-standard raw script in hex form, outputs sending to it will be treated
+as change, and not show up in many RPCs.
+
+Examples:
+
+Import a script with rescan
+> zcash-cli importaddress "myscript"
+
+Import using a label without rescan
+> zcash-cli importaddress "myscript" "testing" false
+
+As a JSON-RPC call
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "importaddress", "params": ["myscript", "testing", false] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+
+importprivkey - Zcash 6.2.0 RPC
+importprivkey "zcashprivkey" ( "label" rescan )
+
+Adds a private key (as returned by dumpprivkey) to your wallet.
+
+Arguments:
+1. "zcashprivkey"   (string, required) The private key (see dumpprivkey)
+2. "label"            (string, optional, default="") An optional label
+3. rescan               (boolean, optional, default=true) Rescan the wallet for transactions
+
+Note: This call can take a long time to complete if rescan is true.
+
+Examples:
+
+Dump a private key
+> zcash-cli dumpprivkey "myaddress"
+
+Import the private key with rescan
+> zcash-cli importprivkey "mykey"
+
+Import using a label and without rescan
+> zcash-cli importprivkey "mykey" "testing" false
+
+As a JSON-RPC call
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "importprivkey", "params": ["mykey", "testing", false] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+importpubkey - Zcash 6.2.0 RPC
+importpubkey "pubkey" ( "label" rescan )
+
+Adds a public key (in hex) that can be watched as if it were in your wallet but cannot be used to spend.
+
+Arguments:
+1. "pubkey"           (string, required) The hex-encoded public key
+2. "label"            (string, optional, default="") An optional label
+3. rescan               (boolean, optional, default=true) Rescan the wallet for transactions
+
+Note: This call can take a long time to complete if rescan is true.
+
+Examples:
+
+Import a public key with rescan
+> zcash-cli importpubkey "mypubkey"
+
+Import using a label without rescan
+> zcash-cli importpubkey "mypubkey" "testing" false
+
+As a JSON-RPC call
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "importpubkey", "params": ["mypubkey", "testing", false] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+
+
+importwallet - Zcash 6.2.0 RPC
+importwallet "filename"
+
+Imports taddr keys from a wallet dump file (see z_exportwallet).
+
+Arguments:
+1. "filename"    (string, required) The wallet file
+
+Examples:
+
+Dump the wallet
+> zcash-cli z_exportwallet "nameofbackup"
+
+Import the wallet
+> zcash-cli importwallet "path/to/exportdir/nameofbackup"
+
+Import using the json rpc call
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "importwallet", "params": ["path/to/exportdir/nameofbackup"] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+
+keypoolrefill - Zcash 6.2.0 RPC
+keypoolrefill ( newsize )
+
+keypoolrefill is DEPRECATED and will be removed in a future release.
+It will not be needed for Zallet.
+See https://zcash.github.io/zcash/user/deprecation.html for more information.
+
+Fills the keypool associated with the legacy transparent value pool. This should only be
+used when interoperability with legacy Bitcoin infrastructure is required.
+
+
+Arguments
+1. newsize     (numeric, optional, default=100) The new keypool size
+
+Examples:
+> zcash-cli keypoolrefill 
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "keypoolrefill", "params": [] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+
+listaddresses - Zcash 6.2.0 RPC
+listaddresses
+
+Lists the addresses managed by this wallet by source, including 
+those generated from randomness by this wallet, Sapling addresses 
+generated from the legacy HD seed, imported watchonly transparent 
+addresses, shielded addresses tracked using imported viewing keys, 
+and addresses derived from the wallet's mnemonic seed for releases 
+version 4.7.0 and above. 
+
+REMINDER: It is recommended that you back up your wallet.dat file 
+regularly. If your wallet was created using zcashd version 4.7.0 
+or later and you have not imported externally produced keys, it only 
+necessary to have backed up the wallet's emergency recovery phrase.
+
+Result:
+[
+  {
+    "source": "imported|imported_watchonly|legacy_random|legacy_seed|mnemonic_seed"
+    "transparent": {
+      "addresses": ["t14oHp2v54vfmdgQ3v3SNuQga8JKHTNi2a1", ...],
+      "changeAddresses": ["t14oHp2v54vfmdgQ3v3SNuQga8JKHTNi2a1", ...]
+    },
+    "sprout": {
+      "addresses": ["ztbx5DLDxa5ZLFTchHhoPNkKs57QzSyib6UqXpEdy76T1aUdFxJt1w9318Z8DJ73XzbnWHKEZP9Yjg712N5kMmP4QzS9iC9", ...]
+    },
+    "sapling": [ -- each element in this list represents a set of diversified addresses derived from a single IVK. 
+      {
+        "zip32KeyPath": "m/32'/133'/0'", -- optional field, not present for imported/watchonly sources,
+        "addresses": [
+          "zs1z7rejlpsa98s2rrrfkwmaxu53e4ue0ulcrw0h4x5g8jl04tak0d3mm47vdtahatqrlkngh9slya",
+          ...
+        ]
+      },
+      ...
+    ],
+    "unified": [ -- each element in this list represents a set of diversified Unified Addresses derived from a single UFVK.
+      {
+        "account": 0,
+        "seedfp": "hexstring",
+        "addresses": [
+          {
+            "diversifier_index": 0,
+            "receiver_types": [
+              "sapling",
+               ...
+            ],
+            "address": "..."
+          },
+          ...
+        ]
+      },
+      ...
+    ],
+    ...
+  },
+  ...
+]
+In the case that a source does not have addresses for a value pool, the key
+associated with that pool will be absent.
+
+Examples:
+> zcash-cli listaddresses 
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "listaddresses", "params": [] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+
+listaddressgroupings - Zcash 6.2.0 RPC
+listaddressgroupings ( asOfHeight )
+
+Lists groups of transparent addresses which have had their common ownership
+made public by common use as inputs or as the resulting change in past transactions.
+
+Arguments:
+1. asOfHeight       (numeric, optional, default=-1) Execute the query as if it
+                    were run when the blockchain was at the height specified by
+                    this argument. The default is to use the entire blockchain
+                    that the node is aware of. -1 can be used as in other RPC
+                    calls to indicate the current height (including the
+                    mempool), but this does not support negative values in
+                    general. A “future” height will fall back to the current
+                    height. Any explicit value will cause the mempool to be
+                    ignored, meaning no unconfirmed tx will be considered.
+
+Result:
+[
+  [
+    [
+      "zcashaddress",     (string) The zcash address
+      amount,                 (numeric) The amount in ZEC
+    ]
+    ,...
+  ]
+  ,...
+]
+
+Bitcoin compatibility:
+The zero-argument form is compatible.
+Examples:
+> zcash-cli listaddressgroupings 
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "listaddressgroupings", "params": [] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+listlockunspent - Zcash 6.2.0 RPC
+listlockunspent
+
+Returns list of temporarily unspendable transparent outputs.
+See the lockunspent call to lock and unlock transactions for spending.
+
+Result:
+[
+  {
+    "txid" : "transactionid",     (string) The transaction id locked
+    "vout" : n                      (numeric) The vout value
+  }
+  ,...
+]
+
+Examples:
+
+List the unspent transactions
+> zcash-cli listunspent 
+
+Lock an unspent transaction
+> zcash-cli lockunspent false "[{\"txid\":\"a08e6907dbbd3d809776dbfc5d82e371b764ed838b5655e72f463568df1aadf0\",\"vout\":1}]"
+
+List the locked transactions
+> zcash-cli listlockunspent 
+
+Unlock the transaction again
+> zcash-cli lockunspent true "[{\"txid\":\"a08e6907dbbd3d809776dbfc5d82e371b764ed838b5655e72f463568df1aadf0\",\"vout\":1}]"
+
+As a JSON RPC call
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "listlockunspent", "params": [] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+signmessage - Zcash 6.2.0 RPC
+signmessage "t-addr" "message"
+
+Sign a message with the private key of a t-addr
+
+Arguments:
+1. "t-addr"  (string, required) The transparent address to use to look up the private key.
+   that will be used to sign the message.
+2. "message" (string, required) The message to create a signature of.
+
+Result:
+"signature"  (string) The signature of the message encoded in base 64
+
+Examples:
+
+Unlock the wallet for 30 seconds
+> zcash-cli walletpassphrase "mypassphrase" 30
+
+Create the signature
+> zcash-cli signmessage "t14oHp2v54vfmdgQ3v3SNuQga8JKHTNi2a1" "my message"
+
+Verify the signature
+> zcash-cli verifymessage "t14oHp2v54vfmdgQ3v3SNuQga8JKHTNi2a1" "signature" "my message"
+
+As json rpc
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "signmessage", "params": ["t14oHp2v54vfmdgQ3v3SNuQga8JKHTNi2a1", "my message"] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+
+
+settxfee - Zcash 6.2.0 RPC
+settxfee amount
+
+settxfee is DEPRECATED and will be removed in a future release.
+It is strongly recommended to use the default ZIP 317 fee, which is not
+expressible using settxfee.
+See https://zcash.github.io/zcash/user/deprecation.html for more information.
+
+Set the preferred transaction fee rate per 1000 bytes. This is only used by legacy transaction creation APIs (sendtoaddress, sendmany, and fundrawtransaction). Overwrites the paytxfee parameter.
+
+Arguments:
+1. amount         (numeric, required) The transaction fee rate in ZEC per 1000 bytes rounded to the nearest 0.00000001
+
+Result
+true|false        (boolean) Returns true if successful
+
+Examples:
+> zcash-cli settxfee 0.00001
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "settxfee", "params": [0.00001] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+
+sendtoaddress - Zcash 6.2.0 RPC
+sendtoaddress "zcashaddress" amount ( "comment" "comment-to" subtractfeefromamount )
+
+Send an amount to a given transparent address. The amount is interpreted as a real number
+and is rounded to the nearest 0.00000001. This API will only select funds from the transparent
+pool, and all the details of the transaction, including sender, recipient, and amount will be
+permanently visible on the public chain. THIS API PROVIDES NO PRIVACY, and should only be
+used when interoperability with legacy Bitcoin infrastructure is required.
+
+Arguments:
+1. "zcashaddress"  (string, required) The transparent Zcash address to send to.
+2. "amount"      (numeric, required) The amount in ZEC to send. eg 0.1
+3. "comment"     (string, optional) A comment used to store what the transaction is for. 
+                             This is not part of the transaction, just kept in your wallet.
+4. "comment-to"  (string, optional) A comment to store the name of the person or organization 
+                             to which you're sending the transaction. This is not part of the 
+                             transaction, just kept in your wallet.
+5. subtractfeefromamount  (boolean, optional, default=false) The fee will be deducted from the amount being sent.
+                             The recipient will receive less Zcash than you enter in the amount field.
+
+Result:
+"transactionid"  (string) The transaction id.
+
+Examples:
+> zcash-cli sendtoaddress "t1M72Sfpbz1BPpXFHz9m3CdqATR44Jvaydd" 0.1
+> zcash-cli sendtoaddress "t1M72Sfpbz1BPpXFHz9m3CdqATR44Jvaydd" 0.1 "donation" "seans outpost"
+> zcash-cli sendtoaddress "t1M72Sfpbz1BPpXFHz9m3CdqATR44Jvaydd" 0.1 "" "" true
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "sendtoaddress", "params": ["t1M72Sfpbz1BPpXFHz9m3CdqATR44Jvaydd", 0.1, "donation", "seans outpost"] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+
+
+sendmany - Zcash 6.2.0 RPC
+sendmany "" {"address":amount,...} ( minconf "comment" ["address",...] )
+
+Send to multiple transparent recipients, using funds from the legacy transparent
+value pool. Amounts are decimal numbers with at most 8 digits of precision.
+Payments sent using this API are visible on-chain and do not otherwise
+provide privacy protections; it should only be used in circumstances 
+where it is necessary to interoperate with legacy Bitcoin infrastructure.
+Prefer to use `z_sendmany` instead.
+
+
+Arguments:
+1. "dummy"               (string, required) Must be set to "" for backwards compatibility.
+2. "amounts"             (string, required) A json object with addresses and amounts
+    {
+      "address":amount   (numeric) The Zcash address is the key, the numeric amount in ZEC is the value
+      ,...
+    }
+3. minconf                 (numeric, optional, default=1) Only use the balance confirmed at least this many times.
+4. "comment"             (string, optional) A comment
+5. subtractfeefromamount   (string, optional) A json array with addresses.
+                           The fee will be equally deducted from the amount of each selected address.
+                           Those recipients will receive less Zcash than you enter in their corresponding amount field.
+                           If no addresses are specified here, the sender pays the fee.
+    [
+      "address"            (string) Subtract fee from this address
+      ,...
+    ]
+
+Result:
+"transactionid"          (string) The transaction id for the send. Only 1 transaction is created regardless of 
+                                    the number of addresses.
+
+Examples:
+
+Send two amounts to two different addresses:
+> zcash-cli sendmany "" "{\"t14oHp2v54vfmdgQ3v3SNuQga8JKHTNi2a1\":0.01,\"t1353tsE8YMTA4EuV7dgUXGjNFf9KpVvKHz\":0.02}"
+
+Send two amounts to two different addresses setting the confirmation and comment:
+> zcash-cli sendmany "" "{\"t14oHp2v54vfmdgQ3v3SNuQga8JKHTNi2a1\":0.01,\"t1353tsE8YMTA4EuV7dgUXGjNFf9KpVvKHz\":0.02}" 6 "testing"
+
+Send two amounts to two different addresses, subtract fee from amount:
+> zcash-cli sendmany "" "{\"t14oHp2v54vfmdgQ3v3SNuQga8JKHTNi2a1\":0.01,\"t1353tsE8YMTA4EuV7dgUXGjNFf9KpVvKHz\":0.02}" 1 "" "[\"t14oHp2v54vfmdgQ3v3SNuQga8JKHTNi2a1\",\"t1353tsE8YMTA4EuV7dgUXGjNFf9KpVvKHz\"]"
+
+As a JSON RPC call
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "sendmany", "params": ["", "{\"t14oHp2v54vfmdgQ3v3SNuQga8JKHTNi2a1\":0.01,\"t1353tsE8YMTA4EuV7dgUXGjNFf9KpVvKHz\":0.02}", 6, "testing"] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+
+walletconfirmbackup - Zcash 6.2.0 RPC
+walletconfirmbackup "emergency recovery phrase"
+
+CAUTION: This is an internal method that is not intended to be called directly by
+users. Please use the zcashd-wallet-tool utility (built or installed in the same directory
+as zcashd) instead. In particular, this method should not be used from zcash-cli, in order
+to avoid exposing the recovery phrase on the command line.
+
+Notify the wallet that the user has backed up the emergency recovery phrase,
+which can be obtained by making a call to z_exportwallet. The zcashd embedded wallet
+requires confirmation that the emergency recovery phrase has been backed up before it
+will permit new spending keys or addresses to be generated.
+
+Arguments:
+1. "emergency recovery phrase" (string, required) The full recovery phrase returned as part
+   of the data returned by z_exportwallet. An error will be returned if the value provided
+   does not match the wallet's existing emergency recovery phrase.
+
+Examples:
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "walletconfirmbackup", "params": ["abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art"] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
+
+
+
+
+listtransactions - Zcash 6.2.0 RPC
+listtransactions ( "dummy" count from includeWatchonly asOfHeight)
+
+Returns up to 'count' of the most recent transactions associated with legacy transparent
+addresses of this wallet, skipping the first 'from' transactions.
+
+This API does not provide any information about transactions containing shielded inputs
+or outputs, and should only be used in circumstances where it is necessary to interoperate
+with legacy Bitcoin infrastructure. Use z_listreceivedbyaddress to obtain information about
+the wallet's shielded transactions.
+
+Arguments:
+1. (dummy)        (string, optional) If set, should be "*" for backwards compatibility.
+2. count          (numeric, optional, default=10) The number of transactions to return
+3. from           (numeric, optional, default=0) The number of transactions to skip
+4. includeWatchonly (bool, optional, default=false) Include transactions to watchonly addresses (see 'importaddress')
+5. asOfHeight       (numeric, optional, default=-1) Execute the query as if it
+                    were run when the blockchain was at the height specified by
+                    this argument. The default is to use the entire blockchain
+                    that the node is aware of. -1 can be used as in other RPC
+                    calls to indicate the current height (including the
+                    mempool), but this does not support negative values in
+                    general. A “future” height will fall back to the current
+                    height. Any explicit value will cause the mempool to be
+                    ignored, meaning no unconfirmed tx will be considered.
+
+Result:
+[
+  {
+    "address":"zcashaddress",    (string) The Zcash address of the transaction. Not present for 
+                                                move transactions (category = move).
+    "category":"send|receive",   (string) The transaction category. 'send' and 'receive' transactions are 
+                                              associated with an address, transaction id and block details
+    "status" : "mined|waiting|expiringsoon|expired",    (string) The transaction status, can be 'mined', 'waiting', 'expiringsoon' 
+                                                                    or 'expired'. Available for 'send' and 'receive' category of transactions.
+    "amount": x.xxx,          (numeric) The amount in ZEC. This is negative for the 'send' category, and for the
+                                         'move' category for moves outbound. It is positive for the 'receive' category,
+                                         and for the 'move' category for inbound funds.
+    "amountZat": x.xxx,       (numeric) The amount in zatoshis. Negative and positive are the same as 'amount' field.
+    "vout" : n,               (numeric) the vout value
+    "fee": x.xxx,             (numeric) The amount of the fee in ZEC. This is negative and only available for the 
+                                         'send' category of transactions.
+    "confirmations": n,       (numeric) The number of confirmations for the transaction. Available for 'send' and 
+                                         'receive' category of transactions.
+    "blockhash": "hashvalue", (string) The block hash containing the transaction. Available for 'send' and 'receive'
+                                          category of transactions.
+    "blockindex": n,          (numeric) The block index containing the transaction. Available for 'send' and 'receive'
+                                          category of transactions.
+    "txid": "transactionid", (string) The transaction id. Available for 'send' and 'receive' category of transactions.
+    "time": xxx,              (numeric) The transaction time in seconds since epoch (midnight Jan 1 1970 GMT).
+    "timereceived": xxx,      (numeric) The time received in seconds since epoch (midnight Jan 1 1970 GMT). Available 
+                                          for 'send' and 'receive' category of transactions.
+    "comment": "...",       (string) If a comment is associated with the transaction.
+    "size": n,                (numeric) Transaction size in bytes
+  }
+]
+
+Examples:
+
+List the most recent 10 transactions in the systems
+> zcash-cli listtransactions 
+
+List transactions 100 to 120
+> zcash-cli listtransactions "*" 20 100
+
+As a JSON RPC call
+> curl --user myusername --data-binary '{"jsonrpc": "1.0", "id":"curltest", "method": "listtransactions", "params": ["*", 20, 100] }' -H 'content-type: text/plain;' http://127.0.0.1:8232/
