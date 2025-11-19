@@ -3,6 +3,9 @@ import type { FormEvent } from 'react';
 import browser from 'webextension-polyfill';
 import type { WalletState } from '@/types/wallet';
 import InscriptionModal from '@/components/InscriptionModal';
+import WalletSwitcher from '@/components/WalletSwitcher';
+import Toast from '@/components/Toast';
+import TransactionHistory from '@/components/TransactionHistory';
 
 interface Props {
   walletState: WalletState;
@@ -24,6 +27,10 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
   const [inscriptionData, setInscriptionData] = useState<Record<string, string>>({});
   const [inscriptionStatus, setInscriptionStatus] = useState<'idle' | 'creating' | 'success'>('idle');
   const [inscriptionError, setInscriptionError] = useState<string | null>(null);
+  
+  // Toast notifications
+  const [toast, setToast] = useState<{message: string; type: 'success' | 'error' | 'info'} | null>(null);
+  
 
   async function handleLock() {
     await browser.runtime.sendMessage({
@@ -41,22 +48,27 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
     const startTime = Date.now();
     
     try {
-      await browser.runtime.sendMessage({
+      const response = await browser.runtime.sendMessage({
         type: 'WALLET_ACTION',
         action: 'REFRESH_BALANCE',
         data: {},
       });
       onUpdate();
-    } finally {
-      // Ensure spinner shows for at least 1 second for better UX
-      const elapsed = Date.now() - startTime;
-      const minDuration = 1000; // 1 second
       
-      if (elapsed < minDuration) {
-        await new Promise(resolve => setTimeout(resolve, minDuration - elapsed));
+      // Show success toast only if balance actually updated
+      if (response && !response.error) {
+        setToast({ message: 'Balance updated', type: 'success' });
       }
+    } catch (error) {
+      setToast({ message: 'Failed to refresh balance', type: 'error' });
+    } finally {
+      // Ensure spinner shows for at least 500ms for better UX
+      const elapsed = Date.now() - startTime;
+      const remaining = Math.max(0, 500 - elapsed);
       
-      setIsRefreshing(false);
+      setTimeout(() => {
+        setIsRefreshing(false);
+      }, remaining);
     }
   }
 
@@ -64,9 +76,11 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
     try {
       if (walletState.address) {
         await navigator.clipboard.writeText(walletState.address);
+        setToast({ message: 'Address copied to clipboard!', type: 'success' });
       }
     } catch (error) {
       console.error('Failed to copy address:', error);
+      setToast({ message: 'Failed to copy address', type: 'error' });
     }
   }
 
@@ -226,17 +240,17 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
       <div className="p-6">
         {view === 'home' && (
           <div className="space-y-6">
-            {/* Balance Card */}
+            {/* Balance Card - Compact */}
             <div className="card text-center">
-              <p className="text-sm text-zinc-400 mb-2">Total Balance</p>
-              <p className="text-4xl font-bold text-white mb-1">{balanceZEC} <span className="text-2xl">ZEC</span></p>
-              <p className="text-xs text-zinc-400 mb-4">
+              <p className="text-xs text-zinc-400 mb-1">Total Balance</p>
+              <p className="text-2xl font-bold text-white mb-1">{balanceZEC} <span className="text-lg">ZEC</span></p>
+              <p className="text-xs text-zinc-500 mb-3">
                 Network: <span className="font-medium text-amber-500">{walletState.network}</span>
               </p>
               
-              <div className="bg-zinc-800 p-3 rounded-lg mb-4 border border-zinc-700">
+              <div className="bg-zinc-800 p-2 rounded-lg mb-3 border border-zinc-700">
                 <p className="text-xs text-zinc-400 mb-1">Your Address</p>
-                <p className="font-mono text-sm break-all text-amber-500">{walletState.address}</p>
+                <p className="font-mono text-xs break-all text-amber-500">{walletState.address}</p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -260,6 +274,9 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
                 </button>
               </div>
             </div>
+
+            {/* Transaction History - Right after balance */}
+            <TransactionHistory walletAddress={walletState.address || ''} />
 
             {/* Quick Actions */}
             <div className="card">
@@ -404,58 +421,10 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
       )}
 
       {showWalletMenu && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-zinc-darker border border-zinc-700 rounded-xl p-6 w-full max-w-md mx-4">
-            <h2 className="text-lg font-semibold text-white mb-4">Multi-Wallet Manager</h2>
-            <p className="text-sm text-zinc-400 mb-4">
-              Create or import additional wallets. Switch between them anytime.
-            </p>
-            <div className="space-y-3">
-              <button
-                type="button"
-                className="w-full btn btn-secondary justify-start gap-2"
-                onClick={() => {
-                  setShowWalletMenu(false);
-                  // Navigate to import page - for now just alert
-                  alert('Import Wallet:\n\n1. You will need your 24-word seed phrase\n2. Create a password for encryption\n3. Optionally name your wallet\n\nThis feature will open a dedicated import form.');
-                }}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
-                Import Wallet from Seed
-              </button>
-              <button
-                type="button"
-                className="w-full btn btn-secondary justify-start gap-2"
-                onClick={() => {
-                  setShowWalletMenu(false);
-                  // Navigate to create page - for now just alert
-                  alert('Create New Wallet:\n\n1. A new 24-word seed phrase will be generated\n2. Write it down safely before continuing\n3. Create a password for encryption\n4. Optionally name your wallet\n\nThis feature will open a dedicated creation flow.');
-                }}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                </svg>
-                Create New Wallet
-              </button>
-              <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-3">
-                <p className="text-xs text-zinc-400 mb-2">Current Wallet</p>
-                <p className="font-mono text-sm text-white truncate">{walletState.address}</p>
-                <p className="text-xs text-zinc-500 mt-1">All wallets are encrypted and stored locally</p>
-              </div>
-              <div className="border-t border-zinc-700 pt-3">
-                <button
-                  type="button"
-                  className="w-full btn btn-primary"
-                  onClick={() => setShowWalletMenu(false)}
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <WalletSwitcher
+          onClose={() => setShowWalletMenu(false)}
+          onUpdate={onUpdate}
+        />
       )}
 
       {showInscription && (
@@ -471,6 +440,14 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
           }}
           status={inscriptionStatus}
           error={inscriptionError}
+        />
+      )}
+
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
         />
       )}
     </div>

@@ -477,6 +477,32 @@ async function handleGetWallets() {
   };
 }
 
+async function handleGetTransactions(data) {
+  try {
+    const { address } = data;
+    
+    if (!address) {
+      throw new Error('Address is required');
+    }
+
+    console.log('[Background] Fetching transactions for:', address);
+
+    // For now, return empty array (will be populated when API is available)
+    // TODO: Implement actual transaction fetching from blockchain API
+    return {
+      success: true,
+      transactions: []
+    };
+  } catch (error) {
+    console.error('[Background] Failed to fetch transactions:', error);
+    return {
+      success: false,
+      error: error.message,
+      transactions: []
+    };
+  }
+}
+
 async function handleSwitchWallet(data) {
   try {
     const { walletId, password } = data;
@@ -801,28 +827,23 @@ async function handleSendZec(data) {
     
     // Broadcast transaction
     console.log('[Background] Broadcasting transaction...');
-    const txid = await self.LightwalletdClient.sendRawTransaction(txHex);
+    const txid = await self.LightwalletdClient.broadcastTransaction(txHex);
     
-    console.log('[Background] Transaction broadcast successful! TXID:', txid);
-    
-    // Refresh balance after sending
-    setTimeout(() => handleRefreshBalance(), 2000);
+    console.log('[Background] Transaction broadcast! TXID:', txid);
     
     return {
       success: true,
-      txid,
+      txid
     };
-    
   } catch (error) {
-    console.error('[Background] SEND_ZEC failed:', error);
+    console.error('[Background] Send ZEC failed:', error);
     return {
       success: false,
-      error: error.message || 'Failed to send transaction',
+      error: error.message
     };
   }
 }
 
-// ============================================================================
 // EVENT LISTENERS
 // ============================================================================
 
@@ -876,6 +897,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       
           case 'CREATE_INSCRIPTION':
             return await handleInscription(message.data);
+
+          case 'GET_TRANSACTIONS':
+            return await handleGetTransactions(message.data);
             
           default:
             throw new Error(`Unknown action: ${message.action}`);
