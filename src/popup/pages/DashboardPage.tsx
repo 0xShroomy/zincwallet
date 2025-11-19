@@ -6,6 +6,9 @@ import InscriptionModal from '@/components/InscriptionModal';
 import WalletSwitcher from '@/components/WalletSwitcher';
 import Toast from '@/components/Toast';
 import TransactionHistory from '@/components/TransactionHistory';
+import ZRC20List from '@/components/ZRC20List';
+import NFTGallery from '@/components/NFTGallery';
+import type { ZRC20Token, NFTInscription } from '@/services/inscriptionIndexer';
 
 interface Props {
   walletState: WalletState;
@@ -13,7 +16,7 @@ interface Props {
 }
 
 export default function DashboardPage({ walletState, onUpdate }: Props) {
-  const [view, setView] = useState<'home' | 'inscriptions'>('home');
+  const [view, setView] = useState<'tokens' | 'nfts' | 'activity' | 'create'>('tokens');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showSend, setShowSend] = useState(false);
   const [showReceive, setShowReceive] = useState(false);
@@ -30,6 +33,11 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
   
   // Toast notifications
   const [toast, setToast] = useState<{message: string; type: 'success' | 'error' | 'info'} | null>(null);
+  
+  // Inscriptions state
+  const [zrc20Tokens, setZrc20Tokens] = useState<ZRC20Token[]>([]);
+  const [nfts, setNfts] = useState<NFTInscription[]>([]);
+  const [loadingInscriptions, setLoadingInscriptions] = useState(false);
   
 
   async function handleLock() {
@@ -81,6 +89,29 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
     } catch (error) {
       console.error('Failed to copy address:', error);
       setToast({ message: 'Failed to copy address', type: 'error' });
+    }
+  }
+
+  async function loadInscriptions() {
+    if (!walletState.address) return;
+    
+    setLoadingInscriptions(true);
+    try {
+      const response = await browser.runtime.sendMessage({
+        type: 'WALLET_ACTION',
+        action: 'GET_INSCRIPTIONS',
+        data: { address: walletState.address },
+      });
+
+      if (response.success) {
+        setZrc20Tokens(response.zrc20 || []);
+        setNfts(response.nfts || []);
+      }
+    } catch (error) {
+      console.error('Failed to load inscriptions:', error);
+      setToast({ message: 'Failed to load inscriptions', type: 'error' });
+    } finally {
+      setLoadingInscriptions(false);
     }
   }
 
@@ -210,129 +241,135 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
         </div>
       </div>
 
-      {/* Navigation */}
-      <div className="bg-zinc-darker border-b border-zinc-800 px-6">
-        <div className="flex gap-6">
+      {/* Balance Card - Always Visible */}
+      <div className="p-6 pb-4">
+        <div className="card text-center">
+          <p className="text-xs text-zinc-400 mb-1">Total Balance</p>
+          <p className="text-2xl font-bold text-white mb-1">{balanceZEC} <span className="text-lg">ZEC</span></p>
+          <p className="text-xs text-zinc-500 mb-3">
+            Network: <span className="font-medium text-amber-500">{walletState.network}</span>
+          </p>
+          
+          <div className="bg-zinc-800 p-2 rounded-lg mb-3 border border-zinc-700">
+            <p className="text-xs text-zinc-400 mb-1">Your Address</p>
+            <p className="font-mono text-xs break-all text-amber-500">{walletState.address}</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                setShowSend(true);
+                setSendError(null);
+                setSendStatus('idle');
+              }}
+            >
+              Send
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setShowReceive(true)}
+            >
+              Receive
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Navigation Tabs - MetaMask Style */}
+      <div className="bg-zinc-darker border-t border-b border-zinc-800 px-6">
+        <div className="flex gap-4">
           <button
-            onClick={() => setView('home')}
-            className={`py-3 border-b-2 font-medium transition-colors ${
-              view === 'home'
+            onClick={() => setView('tokens')}
+            className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+              view === 'tokens'
                 ? 'border-amber-500 text-amber-500'
                 : 'border-transparent text-zinc-400 hover:text-amber-500'
             }`}
           >
-            Home
+            Tokens
           </button>
           <button
-            onClick={() => setView('inscriptions')}
-            className={`py-3 border-b-2 font-medium transition-colors ${
-              view === 'inscriptions'
+            onClick={() => setView('nfts')}
+            className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+              view === 'nfts'
                 ? 'border-amber-500 text-amber-500'
                 : 'border-transparent text-zinc-400 hover:text-amber-500'
             }`}
           >
-            Inscriptions
+            NFTs
+          </button>
+          <button
+            onClick={() => setView('activity')}
+            className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+              view === 'activity'
+                ? 'border-amber-500 text-amber-500'
+                : 'border-transparent text-zinc-400 hover:text-amber-500'
+            }`}
+          >
+            Activity
+          </button>
+          <button
+            onClick={() => setView('create')}
+            className={`py-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+              view === 'create'
+                ? 'border-amber-500 text-amber-500'
+                : 'border-transparent text-zinc-400 hover:text-amber-500'
+            }`}
+          >
+            Create
           </button>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="p-6">
-        {view === 'home' && (
-          <div className="space-y-6">
-            {/* Balance Card - Compact */}
-            <div className="card text-center">
-              <p className="text-xs text-zinc-400 mb-1">Total Balance</p>
-              <p className="text-2xl font-bold text-white mb-1">{balanceZEC} <span className="text-lg">ZEC</span></p>
-              <p className="text-xs text-zinc-500 mb-3">
-                Network: <span className="font-medium text-amber-500">{walletState.network}</span>
-              </p>
-              
-              <div className="bg-zinc-800 p-2 rounded-lg mb-3 border border-zinc-700">
-                <p className="text-xs text-zinc-400 mb-1">Your Address</p>
-                <p className="font-mono text-xs break-all text-amber-500">{walletState.address}</p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => {
-                    setShowSend(true);
-                    setSendError(null);
-                    setSendStatus('idle');
-                  }}
-                >
-                  Send
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setShowReceive(true)}
-                >
-                  Receive
-                </button>
-              </div>
-            </div>
-
-            {/* Transaction History - Right after balance */}
-            <TransactionHistory walletAddress={walletState.address || ''} />
-
-            {/* Quick Actions */}
-            <div className="card">
-              <h3 className="font-bold mb-4 text-white">Create Inscription</h3>
-              <div className="space-y-2">
-                <button 
-                  onClick={() => { setShowInscription('zrc20-deploy'); setInscriptionData({}); setInscriptionError(null); }}
-                  className="w-full text-left p-3 hover:bg-zinc-800 rounded-lg border border-zinc-700 hover:border-amber-500 transition-colors"
-                >
-                  <p className="font-medium text-white">Deploy ZRC-20 Token</p>
-                  <p className="text-xs text-zinc-400">Create a new fungible token</p>
-                </button>
-                <button 
-                  onClick={() => { setShowInscription('zrc20-mint'); setInscriptionData({}); setInscriptionError(null); }}
-                  className="w-full text-left p-3 hover:bg-zinc-800 rounded-lg border border-zinc-700 hover:border-amber-500 transition-colors"
-                >
-                  <p className="font-medium text-white">Mint ZRC-20 Token</p>
-                  <p className="text-xs text-zinc-400">Mint existing token</p>
-                </button>
-                <button 
-                  onClick={() => { setShowInscription('nft-deploy'); setInscriptionData({}); setInscriptionError(null); }}
-                  className="w-full text-left p-3 hover:bg-zinc-800 rounded-lg border border-zinc-700 hover:border-amber-500 transition-colors"
-                >
-                  <p className="font-medium text-white">Deploy NFT Collection</p>
-                  <p className="text-xs text-zinc-400">Create a new NFT collection</p>
-                </button>
-                <button 
-                  onClick={() => { setShowInscription('nft-mint'); setInscriptionData({}); setInscriptionError(null); }}
-                  className="w-full text-left p-3 hover:bg-zinc-800 rounded-lg border border-zinc-700 hover:border-amber-500 transition-colors"
-                >
-                  <p className="font-medium text-white">Mint NFT</p>
-                  <p className="text-xs text-zinc-400">Create an NFT inscription</p>
-                </button>
-              </div>
-            </div>
-          </div>
+      {/* Tab Content */}
+      <div className="p-6 pt-4">
+        {view === 'tokens' && (
+          <ZRC20List tokens={zrc20Tokens} onRefresh={loadInscriptions} />
         )}
 
-        {view === 'inscriptions' && (
-          <div className="space-y-6">
-            {/* ZRC-20 Tokens */}
-            <div className="card">
-              <h3 className="font-bold mb-4 text-white">ZRC-20 Tokens</h3>
-              <div className="text-center py-8 text-zinc-400">
-                <p>No tokens found</p>
-                <p className="text-sm mt-2">Deploy or mint tokens to see them here</p>
-              </div>
-            </div>
+        {view === 'nfts' && (
+          <NFTGallery nfts={nfts} onRefresh={loadInscriptions} />
+        )}
 
-            {/* NFTs */}
-            <div className="card">
-              <h3 className="font-bold mb-4 text-white">NFT Inscriptions</h3>
-              <div className="text-center py-8 text-zinc-400">
-                <p>No NFTs found</p>
-                <p className="text-sm mt-2">Mint NFTs to see them here</p>
-              </div>
+        {view === 'activity' && (
+          <TransactionHistory walletAddress={walletState.address || ''} />
+        )}
+
+        {view === 'create' && (
+          <div className="card">
+            <h3 className="font-bold mb-4 text-white">Create Inscription</h3>
+            <div className="space-y-2">
+              <button 
+                onClick={() => { setShowInscription('zrc20-deploy'); setInscriptionData({}); setInscriptionError(null); }}
+                className="w-full text-left p-3 hover:bg-zinc-800 rounded-lg border border-zinc-700 hover:border-amber-500 transition-colors"
+              >
+                <p className="font-medium text-white">Deploy ZRC-20 Token</p>
+                <p className="text-xs text-zinc-400">Create a new fungible token</p>
+              </button>
+              <button 
+                onClick={() => { setShowInscription('zrc20-mint'); setInscriptionData({}); setInscriptionError(null); }}
+                className="w-full text-left p-3 hover:bg-zinc-800 rounded-lg border border-zinc-700 hover:border-amber-500 transition-colors"
+              >
+                <p className="font-medium text-white">Mint ZRC-20 Token</p>
+                <p className="text-xs text-zinc-400">Mint existing token</p>
+              </button>
+              <button 
+                onClick={() => { setShowInscription('nft-deploy'); setInscriptionData({}); setInscriptionError(null); }}
+                className="w-full text-left p-3 hover:bg-zinc-800 rounded-lg border border-zinc-700 hover:border-amber-500 transition-colors"
+              >
+                <p className="font-medium text-white">Deploy NFT Collection</p>
+                <p className="text-xs text-zinc-400">Create a new NFT collection</p>
+              </button>
+              <button 
+                onClick={() => { setShowInscription('nft-mint'); setInscriptionData({}); setInscriptionError(null); }}
+                className="w-full text-left p-3 hover:bg-zinc-800 rounded-lg border border-zinc-700 hover:border-amber-500 transition-colors"
+              >
+                <p className="font-medium text-white">Mint NFT</p>
+                <p className="text-xs text-zinc-400">Create an NFT inscription</p>
+              </button>
             </div>
           </div>
         )}

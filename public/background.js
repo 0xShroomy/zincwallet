@@ -503,6 +503,40 @@ async function handleGetTransactions(data) {
   }
 }
 
+async function handleGetInscriptions(data) {
+  try {
+    const { address } = data;
+    
+    if (!address) {
+      throw new Error('Address is required');
+    }
+
+    console.log('[Background] Fetching inscriptions for:', address);
+
+    // TODO: Implement actual inscription indexer
+    // Options:
+    // 1. Query Zerdinals API (if available)
+    // 2. Build custom indexer
+    // 3. Scan blockchain directly
+    
+    // For now, return empty (placeholder)
+    // When indexer is ready, this will return real data
+    return {
+      success: true,
+      zrc20: [],
+      nfts: []
+    };
+  } catch (error) {
+    console.error('[Background] Failed to fetch inscriptions:', error);
+    return {
+      success: false,
+      error: error.message,
+      zrc20: [],
+      nfts: []
+    };
+  }
+}
+
 async function handleSwitchWallet(data) {
   try {
     const { walletId, password } = data;
@@ -900,6 +934,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
           case 'GET_TRANSACTIONS':
             return await handleGetTransactions(message.data);
+
+          case 'GET_INSCRIPTIONS':
+            return await handleGetInscriptions(message.data);
             
           default:
             throw new Error(`Unknown action: ${message.action}`);
