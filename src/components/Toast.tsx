@@ -17,9 +17,9 @@ export default function Toast({ message, type, onClose, duration = 4000 }: Props
   }, [duration, onClose]);
 
   const colors = {
-    success: 'bg-green-500/10 border-green-500/50 text-green-400',
-    error: 'bg-red-500/10 border-red-500/50 text-red-400',
-    info: 'bg-blue-500/10 border-blue-500/50 text-blue-400',
+    success: 'bg-green-500/90 border-green-500 text-white',
+    error: 'bg-red-500/90 border-red-500 text-white',
+    info: 'bg-blue-500/90 border-blue-500 text-white',
   };
 
   const icons = {

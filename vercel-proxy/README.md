@@ -8,8 +8,12 @@ Chrome extensions using Manifest V3 cannot directly access public Zcash explorer
 
 ## API Endpoints
 
-### GET `/api/balance?address=<address>`
+### GET `/api/balance?address=<address>&network=<mainnet|testnet>`
 Returns the balance for a Zcash transparent address.
+
+**Networks Supported:**
+- `mainnet` - Uses Blockchair API
+- `testnet` - Uses Tatum RPC
 
 **Response:**
 ```json
@@ -63,6 +67,29 @@ Broadcasts a signed transaction to the Zcash network.
 }
 ```
 
+## Environment Variables
+
+Add these to your Vercel project settings:
+
+```bash
+# Required for mainnet balance (Blockchair)
+BLOCKCHAIR_API_KEY=your_blockchair_key
+
+# Required for testnet (Tatum RPC)
+TATUM_TESTNET_API_KEY=your_tatum_testnet_key
+
+# Optional: for mainnet via Tatum
+TATUM_MAINNET_API_KEY=your_tatum_mainnet_key
+
+# Required for inscriptions/ZRC-20
+SUPABASE_URL=your_supabase_url
+SUPABASE_ANON_KEY=your_supabase_anon_key
+```
+
+**See `DEPLOY_WITH_TATUM.md` for detailed setup instructions.**
+
+---
+
 ## Deployment
 
 ### 1. Install Vercel CLI
@@ -70,17 +97,20 @@ Broadcasts a signed transaction to the Zcash network.
 npm install -g vercel
 ```
 
-### 2. Deploy to Vercel
+### 2. Add Environment Variables
+Go to Vercel Dashboard → Your Project → Settings → Environment Variables
+
+### 3. Deploy to Vercel
 ```bash
 cd vercel-proxy
 vercel --prod
 ```
 
-### 3. Note your deployment URL
+### 4. Note your deployment URL
 Vercel will give you a URL like: `https://zinc-wallet-proxy.vercel.app`
 
-### 4. Update your wallet
-Update `/public/lightwalletd-client.js` to use your proxy URL.
+### 5. Update your wallet
+The wallet already uses: `https://vercel-proxy-loghorizon.vercel.app`
 
 ## Local Development
 

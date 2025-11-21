@@ -13,23 +13,32 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { address } = req.query;
+  const { address, network = 'mainnet' } = req.query;
   
   if (!address) {
     return res.status(400).json({ error: 'Address parameter required' });
   }
 
-  // Try multiple explorers
-  const explorers = [
-    {
-      url: `https://insight.zcash.com/api/addr/${address}/utxo`,
-      format: 'insight'
-    },
-    {
-      url: `https://zcashnetwork.info/api/addr/${address}/utxo`,
-      format: 'insight'
-    }
-  ];
+  // Select explorers based on network
+  const explorers = network === 'testnet'
+    ? [
+        // For testnet, we'll use Tatum RPC listunspent
+        {
+          url: null,  // Will use Tatum RPC
+          format: 'tatum'
+        }
+      ]
+    : [
+        // Mainnet explorers
+        {
+          url: `https://insight.zcash.com/api/addr/${address}/utxo`,
+          format: 'insight'
+        },
+        {
+          url: `https://zcashnetwork.info/api/addr/${address}/utxo`,
+          format: 'insight'
+        }
+      ];
 
   for (const explorer of explorers) {
     try {

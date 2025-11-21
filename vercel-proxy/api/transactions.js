@@ -1,5 +1,8 @@
 // Vercel serverless function to fetch Zcash transaction history
 // Keeps API key secure on server-side
+// Supports both mainnet (Blockchair) and testnet (Lightwalletd)
+
+import { getLightwalletdTransactions } from '../lib/lightwalletd.js';
 
 // Simple in-memory cache
 const txCache = new Map();
@@ -17,23 +20,38 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { address, limit = 50 } = req.query;
+  const { address, network = 'mainnet', limit = 50 } = req.query;
   
   if (!address) {
     return res.status(400).json({ error: 'Address parameter required' });
   }
 
-  // Check cache first
-  const cacheKey = `${address}_${limit}`;
+  // Check cache first (include network in cache key)
+  const cacheKey = `${network}:${address}_${limit}`;
   const cached = txCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-    console.log(`[Transactions] Cache HIT for ${address}`);
+    console.log(`[Transactions] Cache HIT for ${network} - ${address}`);
     return res.status(200).json({
       ...cached.data,
       cached: true
     });
   }
 
+  // Route to appropriate API based on network
+  if (network === 'testnet') {
+    console.log(`[Testnet] Fetching transactions for ${address}`);
+    const result = await getLightwalletdTransactions(address, 'testnet', limit);
+    
+    // Cache the result
+    txCache.set(cacheKey, {
+      data: result,
+      timestamp: Date.now()
+    });
+    
+    return res.status(200).json(result);
+  }
+
+  // Mainnet: Use Blockchair
   try {
     // Get API key from environment (secure!)
     const blockchairKey = process.env.BLOCKCHAIR_API_KEY;

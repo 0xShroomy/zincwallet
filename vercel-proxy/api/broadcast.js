@@ -17,25 +17,35 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { txHex } = req.body;
+  const { txHex, network = 'mainnet' } = req.body;
   
   if (!txHex) {
     return res.status(400).json({ error: 'txHex parameter required' });
   }
 
-  // Try multiple explorers for broadcasting
-  const explorers = [
-    {
-      url: 'https://insight.zcash.com/api/tx/send',
-      method: 'POST',
-      format: 'insight'
-    },
-    {
-      url: 'https://zcashnetwork.info/api/tx/send',
-      method: 'POST',
-      format: 'insight'
-    }
-  ];
+  // Select explorers based on network
+  const explorers = network === 'testnet' 
+    ? [
+        // Testnet explorers
+        {
+          url: 'https://testnet.zcashexplorer.app/api/tx/send',
+          method: 'POST',
+          format: 'insight'
+        }
+      ]
+    : [
+        // Mainnet explorers
+        {
+          url: 'https://insight.zcash.com/api/tx/send',
+          method: 'POST',
+          format: 'insight'
+        },
+        {
+          url: 'https://zcashnetwork.info/api/tx/send',
+          method: 'POST',
+          format: 'insight'
+        }
+      ];
 
   for (const explorer of explorers) {
     try {

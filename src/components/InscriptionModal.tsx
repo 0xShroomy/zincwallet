@@ -21,14 +21,14 @@ export default function InscriptionModal({ type, data, onDataChange, onSubmit, o
   if (type === 'zrc20-deploy') {
     title = 'Deploy ZRC-20 Token';
     fields = [
-      { name: 'tick', label: 'Token Ticker (4 chars)', placeholder: 'ZINC' },
+      { name: 'tick', label: 'Token Ticker (4 chars)', placeholder: 'ZYNC' },
       { name: 'max', label: 'Max Supply', placeholder: '21000000' },
       { name: 'lim', label: 'Mint Limit (per tx)', placeholder: '1000' },
     ];
   } else if (type === 'zrc20-mint') {
     title = 'Mint ZRC-20 Token';
     fields = [
-      { name: 'tick', label: 'Token Ticker', placeholder: 'ZINC' },
+      { name: 'tick', label: 'Token Ticker', placeholder: 'ZYNC' },
       { name: 'amt', label: 'Amount to Mint', placeholder: '1000' },
     ];
   } else if (type === 'nft-deploy') {

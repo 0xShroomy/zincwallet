@@ -19,11 +19,13 @@ self.LightwalletdClient = (function() {
       // Using Vercel proxy to avoid CORS issues
       proxyUrl: PROXY_URL,
       name: 'Mainnet',
+      explorer: 'https://mainnet.zcashexplorer.app',
     },
     testnet: {
       // Testnet support (can add testnet endpoints to proxy later)
       proxyUrl: PROXY_URL,
       name: 'Testnet',
+      explorer: 'https://testnet.zcashexplorer.app',
     },
   };
   
@@ -61,7 +63,7 @@ self.LightwalletdClient = (function() {
     }
     
     try {
-      const apiUrl = `${proxyUrl}/balance?address=${address}`;
+      const apiUrl = `${proxyUrl}/balance?address=${address}&network=${currentNetwork}`;
       console.log('[Lightwalletd] Querying proxy:', apiUrl);
       
       const response = await fetch(apiUrl, {
@@ -218,6 +220,27 @@ self.LightwalletdClient = (function() {
     }
   }
   
+  /**
+   * Get explorer URL for current network
+   */
+  function getExplorerUrl() {
+    return NETWORKS[currentNetwork].explorer;
+  }
+  
+  /**
+   * Get transaction URL in explorer
+   */
+  function getTransactionUrl(txid) {
+    return `${NETWORKS[currentNetwork].explorer}/tx/${txid}`;
+  }
+  
+  /**
+   * Get address URL in explorer
+   */
+  function getAddressUrl(address) {
+    return `${NETWORKS[currentNetwork].explorer}/address/${address}`;
+  }
+  
   return {
     getBalance,
     getUtxos,
@@ -225,6 +248,9 @@ self.LightwalletdClient = (function() {
     broadcastTransaction,
     setNetwork,
     getNetwork,
+    getExplorerUrl,
+    getTransactionUrl,
+    getAddressUrl,
   };
   
 })();

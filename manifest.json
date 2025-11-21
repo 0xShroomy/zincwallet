@@ -22,8 +22,12 @@
   "permissions": [
     "storage",
     "unlimitedStorage",
-    "tabs"
+    "tabs",
+    "sidePanel"
   ],
+  "side_panel": {
+    "default_path": "src/popup/index.html"
+  },
   "host_permissions": [
     "https://explorer.testnet.z.cash/*",
     "https://testnet.zcash.community/*",

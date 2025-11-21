@@ -4,6 +4,7 @@ import browser from 'webextension-polyfill';
 import type { WalletState } from '@/types/wallet';
 import InscriptionModal from '@/components/InscriptionModal';
 import WalletSwitcher from '@/components/WalletSwitcher';
+import SettingsMenu from '@/components/SettingsMenu';
 import Toast from '@/components/Toast';
 import TransactionHistory from '@/components/TransactionHistory';
 import ZRC20List from '@/components/ZRC20List';
@@ -21,6 +22,7 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
   const [showSend, setShowSend] = useState(false);
   const [showReceive, setShowReceive] = useState(false);
   const [showWalletMenu, setShowWalletMenu] = useState(false);
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [sendTo, setSendTo] = useState('');
   const [sendAmount, setSendAmount] = useState('');
   const [sendError, setSendError] = useState<string | null>(null);
@@ -41,6 +43,27 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
   
   // Active wallet info
   const [activeWalletName, setActiveWalletName] = useState<string>('My Wallet');
+  
+  // USD price state
+  const [zecPriceUsd, setZecPriceUsd] = useState<number | null>(null);
+  const [isLoadingPrice, setIsLoadingPrice] = useState(true);
+  const [isLoadingBalance, setIsLoadingBalance] = useState(true);
+  
+  // Function to fetch ZEC price from Binance
+  async function fetchZecPrice() {
+    try {
+      setIsLoadingPrice(true);
+      const response = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=ZECUSDT');
+      const data = await response.json();
+      if (data.price) {
+        setZecPriceUsd(parseFloat(data.price));
+      }
+    } catch (error) {
+      console.error('Failed to fetch ZEC price:', error);
+    } finally {
+      setIsLoadingPrice(false);
+    }
+  }
   
   // Function to fetch active wallet info
   async function fetchActiveWalletName() {
@@ -66,14 +89,85 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
   useEffect(() => {
     fetchActiveWalletName();
   }, [walletState.address]); // Re-fetch when address changes (wallet switched)
+  
+  // Fetch inscriptions when network changes or wallet unlocks
+  useEffect(() => {
+    if (walletState.address && !walletState.isLocked) {
+      loadInscriptions();
+    }
+  }, [walletState.network, walletState.address, walletState.isLocked]); // Re-fetch when network/wallet changes
+  
+  // Auto-fetch balance when wallet opens/unlocks (once only)
+  useEffect(() => {
+    if (walletState.address && !walletState.isLocked) {
+      setIsLoadingBalance(true);
+      onUpdate(); // Trigger parent to refresh balance
+      
+      // Poll for balance updates for up to 5 seconds
+      let pollCount = 0;
+      const pollInterval = setInterval(() => {
+        pollCount++;
+        if (pollCount >= 10) { // 10 attempts * 500ms = 5 seconds
+          clearInterval(pollInterval);
+          return;
+        }
+        onUpdate(); // Keep refreshing until balance loads
+      }, 500);
+      
+      return () => clearInterval(pollInterval);
+    }
+  }, []); // Run ONCE on mount only
+  
+  // Stop loading when balance updates (with smooth transition delay)
+  useEffect(() => {
+    // Only stop loading if we actually received data (non-zero or after delay)
+    if (walletState.balance > 0) {
+      // Balance loaded! Wait a moment for smooth transition
+      const smoothTransition = setTimeout(() => {
+        setIsLoadingBalance(false);
+      }, 400); // 400ms delay for smooth UX
+      return () => clearTimeout(smoothTransition);
+    } else if (walletState.balance === 0) {
+      // If balance is 0, wait longer to see if it updates
+      const timer = setTimeout(() => {
+        setIsLoadingBalance(false);
+      }, 2000); // Wait 2 seconds max for actual 0 balance
+      return () => clearTimeout(timer);
+    }
+  }, [walletState.balance]);
+  
+  // Fetch ZEC price on mount and refresh every 5 minutes
+  useEffect(() => {
+    fetchZecPrice();
+    const interval = setInterval(fetchZecPrice, 5 * 60 * 1000); // 5 minutes
+    return () => clearInterval(interval);
+  }, []);
 
-  async function handleLock() {
-    await browser.runtime.sendMessage({
-      type: 'WALLET_ACTION',
-      action: 'LOCK_WALLET',
-      data: {},
-    });
-    onUpdate();
+  async function handleExpandView() {
+    // Open extension in a popup window positioned on the right side
+    try {
+      const url = browser.runtime.getURL('src/popup/index.html');
+      
+      // Get screen dimensions
+      const screenWidth = window.screen.availWidth;
+      const screenHeight = window.screen.availHeight;
+      
+      // Create popup window on the right side
+      await browser.windows.create({
+        url,
+        type: 'popup',
+        width: 400,
+        height: screenHeight - 100,
+        left: screenWidth - 420,
+        top: 50,
+        focused: true
+      });
+    } catch (error) {
+      console.error('Failed to open expanded view:', error);
+      // Fallback: open in new tab
+      const url = browser.runtime.getURL('src/popup/index.html');
+      await browser.tabs.create({ url });
+    }
   }
 
   async function handleSync() {
@@ -256,12 +350,21 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
               </svg>
             </button>
             <button
-              onClick={handleLock}
+              onClick={() => setShowSettingsMenu(true)}
               className="p-2 hover:bg-zinc-800 rounded-lg transition-colors text-zinc-400 hover:text-amber-500"
-              title="Lock Wallet"
+              title="Settings"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <button
+              onClick={handleExpandView}
+              className="p-2 hover:bg-zinc-800 rounded-lg transition-colors text-zinc-400 hover:text-amber-500"
+              title="Expand View"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 4h12a1 1 0 011 1v14a1 1 0 01-1 1H9a1 1 0 01-1-1V5a1 1 0 011-1zM4 8h4M4 12h4M4 16h4" />
               </svg>
             </button>
           </div>
@@ -272,15 +375,29 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
       <div className="p-6 pb-4">
         <div className="card text-center">
           <p className="text-xs text-zinc-400 mb-1">Total Balance</p>
-          <p className="text-2xl font-bold text-white mb-1">{balanceZEC} <span className="text-lg">ZEC</span></p>
-          <p className="text-xs text-zinc-500 mb-3">
-            Network: <span className="font-medium text-amber-500">{walletState.network}</span>
-          </p>
           
-          <div className="bg-zinc-800 p-2 rounded-lg mb-3 border border-zinc-700">
+          {isLoadingBalance || isLoadingPrice ? (
+            // Loading skeleton
+            <>
+              <div className="h-8 bg-zinc-700 rounded animate-pulse mb-2 mx-auto w-48"></div>
+              <div className="h-5 bg-zinc-700 rounded animate-pulse mb-2 mx-auto w-24"></div>
+            </>
+          ) : (
+            // Actual data
+            <>
+              <p className="text-2xl font-bold text-white mb-1">{balanceZEC} <span className="text-lg">ZEC</span></p>
+              {zecPriceUsd && (
+                <p className="text-sm text-zinc-400 mb-2">
+                  ≈ ${(walletState.balance / 100000000 * zecPriceUsd).toFixed(2)} USD
+                </p>
+              )}
+            </>
+          )}
+          
+          {/* <div className="bg-zinc-800 p-2 rounded-lg mb-3 border border-zinc-700">
             <p className="text-xs text-zinc-400 mb-1">Your Address</p>
             <p className="font-mono text-xs break-all text-amber-500">{walletState.address}</p>
-          </div>
+          </div> */}
 
           <div className="grid grid-cols-2 gap-3">
             <button
@@ -488,6 +605,12 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
         <WalletSwitcher
           onClose={() => setShowWalletMenu(false)}
           onUpdate={onUpdate}
+        />
+      )}
+
+      {showSettingsMenu && (
+        <SettingsMenu
+          onClose={() => setShowSettingsMenu(false)}
         />
       )}
 

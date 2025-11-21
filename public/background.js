@@ -15,6 +15,8 @@ importScripts('fix-zcash-keys.js'); // REAL secp256k1 implementation - MUST load
 importScripts('zcash-keys.js');
 importScripts('lightwalletd-client.js');
 importScripts('zcash-transaction.js');
+importScripts('inscription-builder.js'); // Zinc & Zerdinals inscription support
+importScripts('transaction-builder.js'); // Transaction building with inscription support
 
 // ============================================================================
 // CRYPTO UTILITIES
@@ -120,14 +122,8 @@ let walletState = {
   isLocked: true,
   address: '',
   balance: 0,
-  network: 'mainnet' // Default to mainnet
+  network: 'mainnet' // Will be loaded from storage on init
 };
-
-// Set lightwalletd client to mainnet
-if (typeof self.LightwalletdClient !== 'undefined') {
-  self.LightwalletdClient.setNetwork('mainnet');
-  console.log('[Background] Network set to MAINNET');
-}
 
 // ===========================================================================
 // MULTI-WALLET MANAGEMENT
@@ -206,6 +202,17 @@ async function initWalletState() {
   }
   
   walletState.isInitialized = wallets.length > 0;
+  
+  // Load network from storage
+  const stored = await chrome.storage.local.get(['network']);
+  const network = stored.network || 'mainnet';
+  walletState.network = network;
+  
+  // Set lightwalletd client to stored network
+  if (typeof self.LightwalletdClient !== 'undefined') {
+    self.LightwalletdClient.setNetwork(network);
+    console.log('[Background] Network loaded from storage:', network.toUpperCase());
+  }
   
   // Check if wallet was previously unlocked (within session)
   const session = await chrome.storage.session.get(['walletUnlocked', 'walletAddress', 'unlockTime', 'activeWalletId']);
@@ -552,6 +559,71 @@ async function handleGetState() {
   return { ...walletState };
 }
 
+async function handleGetNetwork() {
+  try {
+    // Get network from storage, default to mainnet
+    const stored = await chrome.storage.local.get(['network']);
+    const network = stored.network || 'mainnet';
+    
+    console.log('[Background] Current network:', network);
+    
+    return {
+      success: true,
+      network
+    };
+  } catch (error) {
+    console.error('[Background] Failed to get network:', error);
+    return {
+      success: false,
+      error: error.message,
+      network: 'mainnet'
+    };
+  }
+}
+
+async function handleSwitchNetwork(data) {
+  try {
+    const { network } = data;
+    
+    if (network !== 'mainnet' && network !== 'testnet') {
+      throw new Error('Invalid network. Must be "mainnet" or "testnet"');
+    }
+    
+    console.log('[Background] Switching network to:', network);
+    
+    // Save to storage
+    await chrome.storage.local.set({ network });
+    
+    // Update wallet state
+    walletState.network = network;
+    
+    // Update lightwalletd client
+    if (typeof self.LightwalletdClient !== 'undefined') {
+      self.LightwalletdClient.setNetwork(network);
+      console.log('[Background] Lightwalletd client updated to:', network);
+    }
+    
+    console.log('[Background] Network switched successfully');
+    
+    // Refresh balance on the new network if wallet is unlocked
+    if (!walletState.isLocked && walletState.address) {
+      console.log('[Background] Refreshing balance for new network...');
+      await handleRefreshBalance();
+    }
+    
+    return {
+      success: true,
+      network
+    };
+  } catch (error) {
+    console.error('[Background] Failed to switch network:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
 async function handleGetWallets() {
   const { wallets, activeWalletId } = await getAllWallets();
   return {
@@ -604,7 +676,7 @@ async function handleGetTransactions(data) {
     const requestPromise = (async () => {
       try {
         
-        const proxyUrl = `https://vercel-proxy-loghorizon.vercel.app/api/transactions?address=${address}&limit=50`;
+        const proxyUrl = `https://vercel-proxy-loghorizon.vercel.app/api/transactions?address=${address}&network=${walletState.network}&limit=50`;
         
         console.log('[Background] Querying proxy:', proxyUrl);
         
@@ -705,7 +777,7 @@ async function handleGetInscriptions(data) {
     const requestPromise = (async () => {
       try {
         // Fetch via Vercel proxy (queries Supabase indexer)
-        const proxyUrl = `https://vercel-proxy-loghorizon.vercel.app/api/inscriptions?address=${address}`;
+        const proxyUrl = `https://vercel-proxy-loghorizon.vercel.app/api/inscriptions?address=${address}&network=${walletState.network}`;
         
         console.log('[Background] Querying inscriptions proxy:', proxyUrl);
         
@@ -794,6 +866,388 @@ async function handleGetInscriptions(data) {
       zerdinals: { inscriptions: [] }
     };
   }
+}
+
+// ===========================================================================
+// INSCRIPTION HANDLERS
+// ===========================================================================
+
+/**
+ * Deploy ZRC-20 Token (Zinc Protocol)
+ */
+async function handleDeployZrc20(data) {
+  try {
+    const { tick, max, limit, decimals = 8 } = data;
+    
+    console.log('[Background] Deploying ZRC-20:', { tick, max, limit, decimals });
+    
+    // Validate wallet is unlocked
+    if (walletState.isLocked || !walletState.address) {
+      throw new Error('Wallet is locked');
+    }
+    
+    // Get UTXOs
+    const utxos = await getUtxosForAddress(walletState.address);
+    if (!utxos || utxos.length === 0) {
+      throw new Error('No UTXOs available. Fund your wallet first.');
+    }
+    
+    // Get private key
+    const privateKey = await getPrivateKeyForAddress(walletState.address);
+    
+    // Build inscription
+    const inscription = self.InscriptionBuilder.buildZincInscription('deployZrc20', {
+      tick,
+      max,
+      limit,
+      decimals
+    });
+    
+    // Build transaction
+    const tx = await self.TransactionBuilder.buildInscriptionTransaction({
+      utxos,
+      fromAddress: walletState.address,
+      inscription,
+      privateKey,
+      network: walletState.network
+    });
+    
+    // Broadcast
+    const result = await self.TransactionBuilder.broadcastTransaction(tx.txHex, walletState.network);
+    
+    console.log('[Background] ZRC-20 deployed:', result.txid);
+    
+    return {
+      success: true,
+      txid: result.txid,
+      protocol: 'zinc',
+      type: 'deployZrc20'
+    };
+  } catch (error) {
+    console.error('[Background] Deploy ZRC-20 failed:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
+ * Mint ZRC-20 Tokens (Zinc Protocol)
+ */
+async function handleMintZrc20(data) {
+  try {
+    const { deployTxid, amount } = data;
+    
+    console.log('[Background] Minting ZRC-20:', { deployTxid, amount });
+    
+    if (walletState.isLocked || !walletState.address) {
+      throw new Error('Wallet is locked');
+    }
+    
+    const utxos = await getUtxosForAddress(walletState.address);
+    if (!utxos || utxos.length === 0) {
+      throw new Error('No UTXOs available');
+    }
+    
+    const privateKey = await getPrivateKeyForAddress(walletState.address);
+    
+    const inscription = self.InscriptionBuilder.buildZincInscription('mintZrc20', {
+      deployTxid,
+      amount
+    });
+    
+    const tx = await self.TransactionBuilder.buildInscriptionTransaction({
+      utxos,
+      fromAddress: walletState.address,
+      inscription,
+      privateKey,
+      network: walletState.network
+    });
+    
+    const result = await self.TransactionBuilder.broadcastTransaction(tx.txHex, walletState.network);
+    
+    console.log('[Background] ZRC-20 minted:', result.txid);
+    
+    return {
+      success: true,
+      txid: result.txid,
+      protocol: 'zinc',
+      type: 'mintZrc20'
+    };
+  } catch (error) {
+    console.error('[Background] Mint ZRC-20 failed:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
+ * Transfer ZRC-20 Tokens (Zinc Protocol)
+ */
+async function handleTransferZrc20(data) {
+  try {
+    const { deployTxid, amount, to } = data;
+    
+    console.log('[Background] Transferring ZRC-20:', { deployTxid, amount, to });
+    
+    if (walletState.isLocked || !walletState.address) {
+      throw new Error('Wallet is locked');
+    }
+    
+    const utxos = await getUtxosForAddress(walletState.address);
+    if (!utxos || utxos.length === 0) {
+      throw new Error('No UTXOs available');
+    }
+    
+    const privateKey = await getPrivateKeyForAddress(walletState.address);
+    
+    const inscription = self.InscriptionBuilder.buildZincInscription('transferZrc20', {
+      deployTxid,
+      amount,
+      to
+    });
+    
+    // Add transfer amount to inscription for UTXO selection
+    inscription.transferAmount = 546; // dust amount to recipient
+    
+    const tx = await self.TransactionBuilder.buildInscriptionTransaction({
+      utxos,
+      fromAddress: walletState.address,
+      toAddress: to,
+      inscription,
+      privateKey,
+      network: walletState.network
+    });
+    
+    const result = await self.TransactionBuilder.broadcastTransaction(tx.txHex, walletState.network);
+    
+    console.log('[Background] ZRC-20 transferred:', result.txid);
+    
+    return {
+      success: true,
+      txid: result.txid,
+      protocol: 'zinc',
+      type: 'transferZrc20'
+    };
+  } catch (error) {
+    console.error('[Background] Transfer ZRC-20 failed:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
+ * Deploy NFT Collection (Zinc Protocol)
+ */
+async function handleDeployCollection(data) {
+  try {
+    const { name, metadata } = data;
+    
+    console.log('[Background] Deploying collection:', { name });
+    
+    if (walletState.isLocked || !walletState.address) {
+      throw new Error('Wallet is locked');
+    }
+    
+    const utxos = await getUtxosForAddress(walletState.address);
+    if (!utxos || utxos.length === 0) {
+      throw new Error('No UTXOs available');
+    }
+    
+    const privateKey = await getPrivateKeyForAddress(walletState.address);
+    
+    const inscription = self.InscriptionBuilder.buildZincInscription('deployCollection', {
+      name,
+      metadata
+    });
+    
+    const tx = await self.TransactionBuilder.buildInscriptionTransaction({
+      utxos,
+      fromAddress: walletState.address,
+      inscription,
+      privateKey,
+      network: walletState.network
+    });
+    
+    const result = await self.TransactionBuilder.broadcastTransaction(tx.txHex, walletState.network);
+    
+    console.log('[Background] Collection deployed:', result.txid);
+    
+    return {
+      success: true,
+      txid: result.txid,
+      protocol: 'zinc',
+      type: 'deployCollection'
+    };
+  } catch (error) {
+    console.error('[Background] Deploy collection failed:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
+ * Mint NFT (Zinc Protocol)
+ */
+async function handleMintNft(data) {
+  try {
+    const { collectionTxid, contentProtocol, contentData, mimeType } = data;
+    
+    console.log('[Background] Minting NFT:', { collectionTxid, contentProtocol });
+    
+    if (walletState.isLocked || !walletState.address) {
+      throw new Error('Wallet is locked');
+    }
+    
+    const utxos = await getUtxosForAddress(walletState.address);
+    if (!utxos || utxos.length === 0) {
+      throw new Error('No UTXOs available');
+    }
+    
+    const privateKey = await getPrivateKeyForAddress(walletState.address);
+    
+    const inscription = self.InscriptionBuilder.buildZincInscription('mintNft', {
+      collectionTxid,
+      contentProtocol,
+      contentData,
+      mimeType
+    });
+    
+    const tx = await self.TransactionBuilder.buildInscriptionTransaction({
+      utxos,
+      fromAddress: walletState.address,
+      inscription,
+      privateKey,
+      network: walletState.network
+    });
+    
+    const result = await self.TransactionBuilder.broadcastTransaction(tx.txHex, walletState.network);
+    
+    console.log('[Background] NFT minted:', result.txid);
+    
+    return {
+      success: true,
+      txid: result.txid,
+      protocol: 'zinc',
+      type: 'mintNft'
+    };
+  } catch (error) {
+    console.error('[Background] Mint NFT failed:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
+ * Create Inscription (Zerdinals Protocol)
+ */
+async function handleInscribe(data) {
+  try {
+    const { contentType, content } = data;
+    
+    console.log('[Background] Creating Zerdinals inscription:', { contentType });
+    
+    if (walletState.isLocked || !walletState.address) {
+      throw new Error('Wallet is locked');
+    }
+    
+    const utxos = await getUtxosForAddress(walletState.address);
+    if (!utxos || utxos.length === 0) {
+      throw new Error('No UTXOs available');
+    }
+    
+    const privateKey = await getPrivateKeyForAddress(walletState.address);
+    
+    const inscription = self.InscriptionBuilder.buildZerdinalsInscription({
+      contentType,
+      content
+    });
+    
+    const tx = await self.TransactionBuilder.buildInscriptionTransaction({
+      utxos,
+      fromAddress: walletState.address,
+      inscription,
+      privateKey,
+      network: walletState.network
+    });
+    
+    const result = await self.TransactionBuilder.broadcastTransaction(tx.txHex, walletState.network);
+    
+    console.log('[Background] Zerdinals inscription created:', result.txid);
+    
+    return {
+      success: true,
+      txid: result.txid,
+      protocol: 'zerdinals',
+      type: 'inscribe'
+    };
+  } catch (error) {
+    console.error('[Background] Inscribe failed:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
+ * Helper: Get UTXOs for address
+ */
+async function getUtxosForAddress(address) {
+  const proxyUrl = `https://vercel-proxy-loghorizon.vercel.app/api/utxos?address=${address}&network=${walletState.network}`;
+  
+  console.log('[Background] Fetching UTXOs from:', proxyUrl);
+  
+  const response = await fetch(proxyUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch UTXOs: ${response.status}`);
+  }
+  
+  const data = await response.json();
+  if (!data.success) {
+    throw new Error(data.error || 'Failed to fetch UTXOs');
+  }
+  
+  return data.utxos || [];
+}
+
+/**
+ * Helper: Get private key for current wallet
+ */
+async function getPrivateKeyForAddress(address) {
+  // Check if wallet is unlocked and private key is cached in session
+  const session = await chrome.storage.session.get(['cachedPrivateKey', 'walletUnlocked', 'walletAddress']);
+  
+  if (!session.walletUnlocked) {
+    throw new Error('Wallet is locked. Please unlock first.');
+  }
+  
+  if (!session.cachedPrivateKey) {
+    throw new Error('Private key not available in session. Please unlock wallet again.');
+  }
+  
+  // Verify the address matches (security check)
+  if (session.walletAddress !== address) {
+    throw new Error('Address mismatch. Session corrupted?');
+  }
+  
+  console.log('[Background] Retrieved private key from session cache');
+  
+  // Return as Uint8Array
+  const privateKeyBytes = new Uint8Array(
+    session.cachedPrivateKey.match(/.{1,2}/g).map(byte => parseInt(byte, 16))
+  );
+  
+  return privateKeyBytes;
 }
 
 async function handleSwitchWallet(data) {
@@ -1364,6 +1818,38 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
           case 'GET_INSCRIPTIONS':
             result = await handleGetInscriptions(message.data);
+            break;
+
+          case 'GET_NETWORK':
+            result = await handleGetNetwork();
+            break;
+
+          case 'SWITCH_NETWORK':
+            result = await handleSwitchNetwork(message.data);
+            break;
+          
+          case 'DEPLOY_ZRC20':
+            result = await handleDeployZrc20(message.data);
+            break;
+          
+          case 'MINT_ZRC20':
+            result = await handleMintZrc20(message.data);
+            break;
+          
+          case 'TRANSFER_ZRC20':
+            result = await handleTransferZrc20(message.data);
+            break;
+          
+          case 'DEPLOY_COLLECTION':
+            result = await handleDeployCollection(message.data);
+            break;
+          
+          case 'MINT_NFT':
+            result = await handleMintNft(message.data);
+            break;
+          
+          case 'INSCRIBE':
+            result = await handleInscribe(message.data);
             break;
             
           default:

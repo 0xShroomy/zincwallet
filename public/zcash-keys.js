@@ -366,9 +366,11 @@ self.ZcashKeys = (function() {
         // Decode WIF format (Base58Check)
         const decoded = await base58Decode(privateKeyInput);
         
-        // WIF format: [1 byte version][32 bytes private key][optional 1 byte compression flag][4 bytes checksum]
-        if (decoded.length !== 37 && decoded.length !== 38) {
-          throw new Error('Invalid WIF private key format');
+        // WIF format after checksum removal: [1 byte version][32 bytes private key][optional 1 byte compression flag]
+        // Uncompressed: 33 bytes (1 + 32)
+        // Compressed: 34 bytes (1 + 32 + 1)
+        if (decoded.length !== 33 && decoded.length !== 34) {
+          throw new Error(`Invalid WIF private key format (expected 33 or 34 bytes, got ${decoded.length})`);
         }
         
         // Check version byte (0x80 for mainnet)
@@ -379,8 +381,8 @@ self.ZcashKeys = (function() {
         // Extract private key (32 bytes after version byte)
         privateKey = decoded.slice(1, 33);
         
-        // Check if compressed (length 38 means compressed, last byte before checksum should be 0x01)
-        isCompressed = decoded.length === 38 && decoded[33] === 0x01;
+        // Check if compressed (length 34 means compressed, last byte is 0x01)
+        isCompressed = decoded.length === 34 && decoded[33] === 0x01;
         
         console.log('[ZcashKeys] WIF private key decoded, compressed:', isCompressed);
       }

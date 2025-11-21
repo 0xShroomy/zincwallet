@@ -30,7 +30,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { address } = req.query;
+  const { address, network = 'mainnet' } = req.query;
   
   if (!address) {
     return res.status(400).json({ 
@@ -51,13 +51,14 @@ export default async function handler(req, res) {
   }
 
   try {
-    console.log('[Inscriptions API] Fetching data for:', address);
+    console.log(`[Inscriptions API] Fetching ${network} data for:`, address);
 
     // Get ZRC-20 token balances (Zinc Protocol)
     const { data: zrc20Data, error: zrc20Error } = await supabase
       .from('zrc20_balances')
       .select('tick, balance, updated_at')
       .eq('address', address)
+      .eq('network', network) // Filter by network
       .gt('balance', 0); // Only return non-zero balances
 
     if (zrc20Error) {
@@ -69,7 +70,8 @@ export default async function handler(req, res) {
     const { data: nftsData, error: nftsError } = await supabase
       .from('nft_ownership')
       .select('collection, token_id, metadata, txid, created_at')
-      .eq('address', address);
+      .eq('address', address)
+      .eq('network', network); // Filter by network
 
     if (nftsError) {
       console.error('[Inscriptions API] NFTs query error:', nftsError);
@@ -81,6 +83,7 @@ export default async function handler(req, res) {
       .from('inscriptions')
       .select('txid, block_height, timestamp, protocol, operation, data, content_type, content_size')
       .eq('sender_address', address)
+      .eq('network', network) // Filter by network
       .order('block_height', { ascending: false })
       .limit(100);
 

@@ -1,5 +1,8 @@
 // Vercel serverless function to fetch Zcash address balance
 // Avoids CORS issues by proxying requests server-side
+// Supports both mainnet (Blockchair) and testnet (Lightwalletd)
+
+import { getLightwalletdBalance } from '../lib/lightwalletd.js';
 
 // Simple in-memory cache (resets when function cold-starts)
 const balanceCache = new Map();
@@ -17,23 +20,38 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { address } = req.query;
+  const { address, network = 'mainnet' } = req.query;
   
   if (!address) {
     return res.status(400).json({ error: 'Address parameter required' });
   }
 
-  // Check cache first
-  const cached = balanceCache.get(address);
+  // Check cache first (include network in cache key)
+  const cacheKey = `${network}:${address}`;
+  const cached = balanceCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-    console.log(`[Cache HIT] ${address}`);
+    console.log(`[Cache HIT] ${network} - ${address}`);
     return res.status(200).json({
       ...cached.data,
       cached: true
     });
   }
 
-  // Try multiple explorers in order
+  // Route to appropriate API based on network
+  if (network === 'testnet') {
+    console.log(`[Testnet] Fetching balance for ${address}`);
+    const result = await getLightwalletdBalance(address, 'testnet');
+    
+    // Cache the result
+    balanceCache.set(cacheKey, {
+      data: result,
+      timestamp: Date.now()
+    });
+    
+    return res.status(200).json(result);
+  }
+
+  // Mainnet: Try multiple explorers in order
   // For Blockchair: Add your free API key as environment variable BLOCKCHAIR_API_KEY
   // eslint-disable-next-line no-undef
   const blockchairKey = process.env.BLOCKCHAIR_API_KEY || '';
@@ -101,7 +119,7 @@ export default async function handler(req, res) {
       };
       
       // Cache successful result
-      balanceCache.set(address, {
+      balanceCache.set(cacheKey, {
         data: result,
         timestamp: Date.now()
       });

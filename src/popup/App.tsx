@@ -11,6 +11,21 @@ function App() {
 
   useEffect(() => {
     loadWalletState();
+    
+    // Listen for storage changes (when background updates balance)
+    const handleStorageChange = (changes: any) => {
+      // If wallet state changes in storage, reload
+      if (changes.walletState || changes.wallets) {
+        console.log('[App] Storage changed, reloading state...');
+        loadWalletState();
+      }
+    };
+    
+    browser.storage.onChanged.addListener(handleStorageChange);
+    
+    return () => {
+      browser.storage.onChanged.removeListener(handleStorageChange);
+    };
   }, []);
 
   async function loadWalletState() {
