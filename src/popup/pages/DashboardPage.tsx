@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { FormEvent } from 'react';
 import browser from 'webextension-polyfill';
 import type { WalletState } from '@/types/wallet';
@@ -39,6 +39,33 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
   const [nfts, setNfts] = useState<NFTInscription[]>([]);
   const [loadingInscriptions, setLoadingInscriptions] = useState(false);
   
+  // Active wallet info
+  const [activeWalletName, setActiveWalletName] = useState<string>('My Wallet');
+  
+  // Function to fetch active wallet info
+  async function fetchActiveWalletName() {
+    try {
+      const response = await browser.runtime.sendMessage({
+        type: 'WALLET_ACTION',
+        action: 'GET_WALLETS',
+        data: {},
+      });
+      
+      if (response.success && response.wallets) {
+        const activeWallet = response.wallets.find((w: any) => w.id === response.activeWalletId);
+        if (activeWallet) {
+          setActiveWalletName(activeWallet.name);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch wallet info:', error);
+    }
+  }
+  
+  // Fetch on mount and when wallet updates
+  useEffect(() => {
+    fetchActiveWalletName();
+  }, [walletState.address]); // Re-fetch when address changes (wallet switched)
 
   async function handleLock() {
     await browser.runtime.sendMessage({
@@ -202,7 +229,19 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
       {/* Header */}
       <div className="bg-zinc-darker border-b border-zinc-800 px-6 py-4">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold text-white">Zync Wallet</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl font-bold text-white">Zync Wallet</h1>
+            <button
+              onClick={() => setShowWalletMenu(true)}
+              className="flex items-center gap-2 px-3 py-1.5 hover:bg-zinc-800 rounded-lg transition-colors text-zinc-300 hover:text-white"
+              title="Switch Wallet"
+            >
+              <span className="text-sm font-medium">{activeWalletName}</span>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+          </div>
           <div className="flex items-center gap-2">
             <button
               onClick={handleSync}
@@ -222,10 +261,10 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
             <button
               onClick={() => setShowWalletMenu(true)}
               className="p-2 hover:bg-zinc-800 rounded-lg transition-colors text-zinc-400 hover:text-amber-500"
-              title="Switch Wallet"
+              title="Wallet Menu"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
             <button
