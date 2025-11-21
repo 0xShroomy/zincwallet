@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Derivation Step-by-Step Debugger</title>
+  <style>
+    body { 
+      font-family: monospace; 
+      padding: 20px; 
+      background: #1a1a1a; 
+      color: #eee;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    h1 { color: #f7931a; }
+    input, textarea, button {
+      display: block;
+      width: 100%;
+      margin: 10px 0;
+      padding: 12px;
+      background: #2a2a2a;
+      border: 1px solid #444;
+      color: #fff;
+      font-family: monospace;
+      font-size: 13px;
+      box-sizing: border-box;
+    }
+    button {
+      background: #f7931a;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    button:hover { background: #ff9d2e; }
+    .step {
+      margin: 20px 0;
+      padding: 15px;
+      background: #252525;
+      border: 1px solid #444;
+      border-radius: 5px;
+    }
+    .step-title {
+      color: #f7931a;
+      font-weight: bold;
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+    .data {
+      background: #1a1a1a;
+      padding: 10px;
+      border-left: 3px solid #0cf;
+      word-break: break-all;
+      margin: 5px 0;
+      font-size: 11px;
+    }
+    .label {
+      color: #888;
+      font-size: 11px;
+      margin-bottom: 3px;
+    }
+    .match { border-left-color: #0f0 !important; background: #1a3a1a; }
+    .mismatch { border-left-color: #f00 !important; background: #3a1a1a; }
+    .compare {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔬 Step-by-Step Derivation Debugger</h1>
+  <p>This tool shows every step of address derivation so we can find where it diverges from zinc.is</p>
+  
+  <label>12-word seed phrase:</label>
+  <textarea id="mnemonic" rows="3" placeholder="Enter your 12-word Zerdinals phrase here"></textarea>
+  
+  <label>Expected address (from zinc.is or zerdinals.com):</label>
+  <input type="text" id="expected" placeholder="t1aRiDuyWGmSr9RZVTtX2qmKg4JMPiJDFnG" value="t1aRiDuyWGmSr9RZVTtX2qmKg4JMPiJDFnG">
+  
+  <button onclick="debugDerivation()">🔍 Debug Derivation</button>
+  
+  <div id="output"></div>
+  
+  <script src="crypto-js.min.js"></script>
+  <script src="bip39.js"></script>
+  <script src="zcash-keys.js"></script>
+  <script>
+    async function debugDerivation() {
+      const mnemonic = document.getElementById('mnemonic').value.trim();
+      const expected = document.getElementById('expected').value.trim();
+      const output = document.getElementById('output');
+      
+      if (!mnemonic || mnemonic.split(/\s+/).length !== 12) {
+        alert('Please enter a valid 12-word phrase');
+        return;
+      }
+      
+      output.innerHTML = '<h2>🔬 Analyzing Derivation...</h2>';
+      
+      try {
+        // Step 1: Convert mnemonic to seed
+        output.innerHTML += `
+          <div class="step">
+            <div class="step-title">Step 1: Mnemonic to Seed (BIP39)</div>
+            <div class="label">Input Mnemonic (12 words):</div>
+            <div class="data">${mnemonic.split(' ').slice(0, 3).join(' ')} ... (truncated for security)</div>
+          </div>
+        `;
+        
+        const seed = await self.BIP39.mnemonicToSeed(mnemonic);
+        const seedHex = Array.from(new Uint8Array(seed)).map(b => b.toString(16).padStart(2, '0')).join('');
+        
+        output.innerHTML += `
+          <div class="step">
+            <div class="step-title">Step 2: BIP39 Seed Generated</div>
+            <div class="label">Seed (512-bit):</div>
+            <div class="data">${seedHex.substring(0, 64)}... (first 32 bytes shown)</div>
+            <div class="label">Length: ${seedHex.length / 2} bytes</div>
+          </div>
+        `;
+        
+        // Step 3: Try both coin types
+        const paths = [
+          { name: 'Zerdinals (Bitcoin coin type 0)', coinType: 0 },
+          { name: 'Zinc (Zcash coin type 133)', coinType: 133 },
+          { name: 'Alternative (coin type 2)', coinType: 2 },
+          { name: 'Alternative (coin type 141)', coinType: 141 },
+        ];
+        
+        for (const pathInfo of paths) {
+          const result = await self.ZcashKeys.deriveAddress(mnemonic, 0, 0, pathInfo.coinType);
+          const matches = result.address === expected;
+          
+          output.innerHTML += `
+            <div class="step">
+              <div class="step-title">${pathInfo.name}</div>
+              <div class="label">Derivation Path:</div>
+              <div class="data">${result.derivationPath}</div>
+              
+              <div class="label">Private Key (hex):</div>
+              <div class="data">${result.privateKey.substring(0, 16)}...${result.privateKey.substring(48)} (64 chars)</div>
+              
+              <div class="label">Public Key (hex):</div>
+              <div class="data">${result.publicKey.substring(0, 20)}...${result.publicKey.substring(46)} (66 chars = compressed)</div>
+              
+              <div class="label">Generated Address:</div>
+              <div class="data ${matches ? 'match' : 'mismatch'}">${result.address}</div>
+              
+              ${matches ? '<div style="color:#0f0;font-weight:bold;margin-top:10px;">✅ MATCH! This is the correct derivation!</div>' : ''}
+              ${!matches && expected ? `
+                <div class="compare">
+                  <div>
+                    <div class="label">Our Address:</div>
+                    <div class="data mismatch">${result.address}</div>
+                  </div>
+                  <div>
+                    <div class="label">Expected (zinc.is):</div>
+                    <div class="data match">${expected}</div>
+                  </div>
+                </div>
+              ` : ''}
+            </div>
+          `;
+        }
+        
+        // Additional diagnostic
+        output.innerHTML += `
+          <div class="step">
+            <div class="step-title">🔍 What's Different?</div>
+            <p style="line-height:1.6;">
+              <strong>Things to check:</strong><br>
+              1. Is the expected address using a different derivation path entirely?<br>
+              2. Is zinc.is using uncompressed public keys instead of compressed?<br>
+              3. Is there a different address version prefix being used?<br>
+              4. Try extracting the private key from zinc.is and compare with ours<br>
+              5. Check if zinc.is uses a completely custom derivation (not BIP44)
+            </p>
+          </div>
+        `;
+        
+      } catch (error) {
+        output.innerHTML += `
+          <div class="step" style="border-color:#f00;">
+            <div class="step-title" style="color:#f00;">❌ Error</div>
+            <div class="data" style="color:#f00;">${error.message}</div>
+          </div>
+        `;
+      }
+    }
+  </script>
+</body>
+</html>

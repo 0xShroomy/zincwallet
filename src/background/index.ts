@@ -7,7 +7,7 @@ const walletManager = new WalletManager();
 
 // Initialize on install
 browser.runtime.onInstalled.addListener(() => {
-  console.log('Zinc Wallet extension installed');
+  console.log('Zync Wallet extension installed');
 });
 
 // Handle messages from content script (provider API)
@@ -47,7 +47,7 @@ async function handleWalletAction(action: string, data: any) {
       return await walletManager.createWallet(data.password);
     
     case 'IMPORT_WALLET':
-      return await walletManager.importWallet(data.mnemonic, data.password);
+      return await walletManager.importWallet(data, data.password);
     
     case 'UNLOCK_WALLET':
       return await walletManager.unlockWallet(data.password);
@@ -64,9 +64,86 @@ async function handleWalletAction(action: string, data: any) {
     case 'SYNC':
       return await walletManager.sync();
     
+    case 'GET_TRANSACTIONS':
+      return await handleGetTransactions(data);
+    
+    case 'GET_INSCRIPTIONS':
+      return await handleGetInscriptions(data);
+    
+    case 'CREATE_INSCRIPTION':
+      return await handleCreateInscription(data);
+    
     default:
       throw new Error(`Unknown wallet action: ${action}`);
   }
 }
 
-console.log('Zinc Wallet background script loaded');
+async function handleGetTransactions(data: any) {
+  try {
+    const { address } = data;
+    
+    if (!address) {
+      throw new Error('Address is required');
+    }
+
+    console.log('[Background] Fetching transactions for:', address);
+
+    // TODO: Implement Blockchair API integration
+    // For now, return empty array for new wallets
+    return {
+      success: true,
+      transactions: []
+    };
+  } catch (error) {
+    console.error('[Background] Failed to fetch transactions:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      transactions: []
+    };
+  }
+}
+
+async function handleGetInscriptions(data: any) {
+  try {
+    const { address } = data;
+    
+    if (!address) {
+      throw new Error('Address is required');
+    }
+
+    console.log('[Background] Fetching inscriptions for:', address);
+
+    // TODO: Query both Zinc and Zerdinals indexers
+    return {
+      success: true,
+      zinc: {
+        zrc20: [],
+        nfts: []
+      },
+      zerdinals: {
+        inscriptions: []
+      }
+    };
+  } catch (error) {
+    console.error('[Background] Failed to fetch inscriptions:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+}
+
+async function handleCreateInscription(data: any) {
+  try {
+    // TODO: Implement inscription creation
+    throw new Error('Inscription creation not yet implemented');
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+}
+
+console.log('Zync Wallet background script loaded');

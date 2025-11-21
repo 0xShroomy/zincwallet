@@ -1,7 +1,7 @@
 {
-  "name": "zinc-wallet",
+  "name": "zync-wallet",
   "version": "0.1.0",
-  "description": "Browser extension wallet for Zinc Protocol (Zcash inscriptions, ZRC-20, NFTs)",
+  "description": "Browser extension wallet for Zync Protocol (Zcash inscriptions, ZRC-20, NFTs)",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -25,6 +25,7 @@
     "bs58": "^6.0.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "tiny-secp256k1": "^2.2.4",
     "varuint-bitcoin": "^1.1.2",
     "webextension-polyfill": "^0.10.0",
     "zustand": "^4.4.7"
@@ -51,7 +52,7 @@
   },
   "keywords": [
     "zcash",
-    "zinc",
+    "zync",
     "wallet",
     "browser-extension",
     "web3",

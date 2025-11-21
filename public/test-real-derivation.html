@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Test Real Derivation</title>
+  <style>
+    body { font-family: monospace; padding: 20px; background: #1a1a1a; color: #fff; }
+    .result { margin: 10px 0; padding: 15px; background: #2a2a2a; border-left: 3px solid #0cf; }
+    .match { border-left-color: #0f0; background: #1a3a1a; }
+    .mismatch { border-left-color: #f00; background: #3a1a1a; }
+  </style>
+</head>
+<body>
+  <h1>🔬 Test Real Derivation</h1>
+  
+  <h2>Test Data:</h2>
+  <div class="result">
+    <strong>Seed Phrase:</strong><br>
+    hill giraffe midnight print weasel possible cave congress join jump mistake story
+  </div>
+  
+  <div class="result">
+    <strong>Private Key (WIF):</strong><br>
+    L1eCzVwTPBztVgAzdeDr2V1oTzGTMTVXn1wV9hu56S2nPMMvUjM3
+  </div>
+  
+  <div class="result">
+    <strong>Expected Address (zinc.is):</strong><br>
+    t1aRiDuyWGmSr9RZVTtX2qmKg4JMPiJDFnG
+  </div>
+  
+  <button onclick="testWithOurCode()" style="width:100%; padding:15px; margin:10px 0; background:#f7931a; border:none; cursor:pointer; font-weight:bold;">
+    Test With Our Current Code
+  </button>
+  
+  <div id="output"></div>
+  
+  <script src="crypto-js.min.js"></script>
+  <script src="bip39.js"></script>
+  <script src="zcash-keys.js"></script>
+  <script>
+    async function testWithOurCode() {
+      const output = document.getElementById('output');
+      const mnemonic = 'hill giraffe midnight print weasel possible cave congress join jump mistake story';
+      const expected = 't1aRiDuyWGmSr9RZVTtX2qmKg4JMPiJDFnG';
+      
+      output.innerHTML = '<h2>Testing...</h2>';
+      
+      try {
+        // Test with coin type 0 (Bitcoin/Zerdinals)
+        const result0 = await self.ZcashKeys.deriveAddress(mnemonic, 0, 0, 0);
+        const matches0 = result0.address === expected;
+        
+        output.innerHTML += `
+          <div class="result ${matches0 ? 'match' : 'mismatch'}">
+            <strong>Coin Type 0 (Bitcoin/Zerdinals):</strong><br>
+            Path: ${result0.derivationPath}<br>
+            Address: ${result0.address}<br>
+            ${matches0 ? '✅ MATCH!' : '❌ No match'}
+          </div>
+        `;
+        
+        // Test with coin type 133 (Zcash)
+        const result133 = await self.ZcashKeys.deriveAddress(mnemonic, 0, 0, 133);
+        const matches133 = result133.address === expected;
+        
+        output.innerHTML += `
+          <div class="result ${matches133 ? 'match' : 'mismatch'}">
+            <strong>Coin Type 133 (Zcash):</strong><br>
+            Path: ${result133.derivationPath}<br>
+            Address: ${result133.address}<br>
+            ${matches133 ? '✅ MATCH!' : '❌ No match'}
+          </div>
+        `;
+        
+        // Test private key import
+        const wif = 'L1eCzVwTPBztVgAzdeDr2V1oTzGTMTVXn1wV9hu56S2nPMMvUjM3';
+        try {
+          const pkResult = await self.ZcashKeys.importFromPrivateKey(wif);
+          const matchesPK = pkResult.address === expected;
+          
+          output.innerHTML += `
+            <div class="result ${matchesPK ? 'match' : 'mismatch'}">
+              <strong>Private Key Import:</strong><br>
+              Address: ${pkResult.address}<br>
+              ${matchesPK ? '✅ MATCH!' : '❌ No match'}
+            </div>
+          `;
+        } catch (e) {
+          output.innerHTML += `
+            <div class="result mismatch">
+              <strong>Private Key Import:</strong><br>
+              Error: ${e.message}
+            </div>
+          `;
+        }
+        
+        // Show what we need to fix
+        output.innerHTML += `
+          <div class="result" style="border-left-color:#ff0;">
+            <h3>🔍 Diagnosis:</h3>
+            <p>Our getPublicKey() function is broken. It just hashes the private key instead of doing real secp256k1 elliptic curve multiplication.</p>
+            <p><strong>The Fix:</strong> We need to use a proper secp256k1 library like:</p>
+            <ul>
+              <li>@noble/secp256k1</li>
+              <li>elliptic</li>
+              <li>bitcoinjs-lib (includes everything)</li>
+            </ul>
+            <p>Since zinc.is works, they're using one of these standard libraries.</p>
+          </div>
+        `;
+        
+      } catch (error) {
+        output.innerHTML += `
+          <div class="result mismatch">
+            <strong>Error:</strong><br>
+            ${error.message}
+          </div>
+        `;
+      }
+    }
+  </script>
+</body>
+</html>

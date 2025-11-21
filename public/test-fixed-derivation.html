@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Test FIXED Derivation</title>
+  <style>
+    body { 
+      font-family: monospace; 
+      padding: 20px; 
+      background: #1a1a1a; 
+      color: #fff;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    h1 { color: #0f0; }
+    .result {
+      margin: 15px 0;
+      padding: 20px;
+      background: #2a2a2a;
+      border-left: 4px solid #0cf;
+      border-radius: 5px;
+    }
+    .match {
+      border-left-color: #0f0;
+      background: #1a3a1a;
+    }
+    .mismatch {
+      border-left-color: #f00;
+      background: #3a1a1a;
+    }
+    button {
+      width: 100%;
+      padding: 20px;
+      margin: 20px 0;
+      background: #0f0;
+      border: none;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+      border-radius: 5px;
+    }
+    button:hover { background: #0d0; }
+    .value { word-break: break-all; margin-top: 10px; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>✅ Testing FIXED secp256k1 Implementation</h1>
+  
+  <p style="font-size:14px; color:#888;">
+    Using <strong>REAL</strong> secp256k1 elliptic curve math (based on libsecp256k1 algorithms)
+  </p>
+  
+  <button onclick="runTest()">🚀 RUN TEST</button>
+  
+  <div id="output"></div>
+  
+  <script src="crypto-js.min.js"></script>
+  <script src="bip39.js"></script>
+  <script src="fix-zcash-keys.js"></script>
+  <script src="zcash-keys.js"></script>
+  <script>
+    async function runTest() {
+      const output = document.getElementById('output');
+      
+      // Test data from user
+      const mnemonic = 'hill giraffe midnight print weasel possible cave congress join jump mistake story';
+      const expectedAddress = 't1aRiDuyWGmSr9RZVTtX2qmKg4JMPiJDFnG';
+      
+      output.innerHTML = '<h2 style="color:#0cf;">Testing...</h2>';
+      
+      try {
+        // Test with coin type 0 (Bitcoin/Zerdinals)
+        console.log('Testing with coin type 0...');
+        const result0 = await self.ZcashKeys.deriveAddress(mnemonic, 0, 0, 0);
+        const match0 = result0.address === expectedAddress;
+        
+        output.innerHTML += `
+          <div class="result ${match0 ? 'match' : 'mismatch'}">
+            <h3>${match0 ? '✅ SUCCESS!' : '❌ No Match'} Coin Type 0 (Zerdinals/Bitcoin)</h3>
+            <div><strong>Path:</strong> ${result0.derivationPath}</div>
+            <div class="value"><strong>Derived Address:</strong><br>${result0.address}</div>
+            <div class="value"><strong>Expected Address:</strong><br>${expectedAddress}</div>
+            ${match0 ? '<div style="color:#0f0;margin-top:15px;font-size:16px;font-weight:bold;">🎉 ADDRESSES MATCH! Fix works!</div>' : ''}
+          </div>
+        `;
+        
+        // Test with coin type 133 (Zcash)
+        console.log('Testing with coin type 133...');
+        const result133 = await self.ZcashKeys.deriveAddress(mnemonic, 0, 0, 133);
+        const match133 = result133.address === expectedAddress;
+        
+        output.innerHTML += `
+          <div class="result ${match133 ? 'match' : 'mismatch'}">
+            <h3>${match133 ? '✅ SUCCESS!' : '❌ No Match'} Coin Type 133 (Zcash)</h3>
+            <div><strong>Path:</strong> ${result133.derivationPath}</div>
+            <div class="value"><strong>Derived Address:</strong><br>${result133.address}</div>
+            <div class="value"><strong>Expected Address:</strong><br>${expectedAddress}</div>
+            ${match133 ? '<div style="color:#0f0;margin-top:15px;font-size:16px;font-weight:bold;">🎉 ADDRESSES MATCH! Fix works!</div>' : ''}
+          </div>
+        `;
+        
+        // Test private key import
+        console.log('Testing private key import...');
+        const wif = 'L1eCzVwTPBztVgAzdeDr2V1oTzGTMTVXn1wV9hu56S2nPMMvUjM3';
+        try {
+          const pkResult = await self.ZcashKeys.importFromPrivateKey(wif);
+          const matchPK = pkResult.address === expectedAddress;
+          
+          output.innerHTML += `
+            <div class="result ${matchPK ? 'match' : 'mismatch'}">
+              <h3>${matchPK ? '✅ SUCCESS!' : '❌ No Match'} Private Key Import</h3>
+              <div class="value"><strong>WIF:</strong><br>${wif}</div>
+              <div class="value"><strong>Derived Address:</strong><br>${pkResult.address}</div>
+              <div class="value"><strong>Expected Address:</strong><br>${expectedAddress}</div>
+              ${matchPK ? '<div style="color:#0f0;margin-top:15px;font-size:16px;font-weight:bold;">🎉 ADDRESSES MATCH! Fix works!</div>' : ''}
+            </div>
+          `;
+        } catch (e) {
+          output.innerHTML += `
+            <div class="result mismatch">
+              <h3>❌ Private Key Import Error</h3>
+              <div style="color:#f00;">${e.message}</div>
+            </div>
+          `;
+        }
+        
+        // Summary
+        output.innerHTML += `
+          <div class="result" style="border-left-color:#ff0;background:#3a3a1a;">
+            <h3 style="color:#ff0;">📊 Summary</h3>
+            <p>Expected: <code>${expectedAddress}</code></p>
+            <p style="margin-top:15px;">
+              ${match0 || match133 ? '✅ <strong style="color:#0f0;">FIX SUCCESSFUL!</strong> The secp256k1 implementation is now correct.' : '⚠️ Still investigating...'}
+            </p>
+          </div>
+        `;
+        
+      } catch (error) {
+        output.innerHTML += `
+          <div class="result mismatch">
+            <h3>❌ Error</h3>
+            <div style="color:#f00;">${error.message}</div>
+            <div style="margin-top:10px;color:#888;">${error.stack}</div>
+          </div>
+        `;
+      }
+    }
+  </script>
+</body>
+</html>

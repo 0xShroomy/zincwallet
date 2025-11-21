@@ -8,8 +8,10 @@ console.log('[Background] Starting...');
 // ============================================================================
 
 // Import BIP39 library, Zcash address derivation, lightwalletd client, and transaction builder
-/* global importScripts */
+/* global importScripts CryptoJS */
+importScripts('crypto-js.min.js'); // For RIPEMD160
 importScripts('bip39.js');
+importScripts('fix-zcash-keys.js'); // REAL secp256k1 implementation - MUST load before zcash-keys.js
 importScripts('zcash-keys.js');
 importScripts('lightwalletd-client.js');
 importScripts('zcash-transaction.js');
@@ -251,8 +253,9 @@ async function handleCreateWallet(data) {
     // Encrypt seed
     const encryptedSeed = await encrypt(mnemonic, password);
     
-    // Derive address from mnemonic
-    const { address, derivationPath } = await self.ZcashKeys.deriveAddress(mnemonic, 0, 0);
+    // Derive address from mnemonic using coin type 133 (Zcash mainnet standard)
+    const coinType = 133;
+    const { address, derivationPath } = await self.ZcashKeys.deriveAddress(mnemonic, 0, 0, coinType);
     
     // Create wallet object
     const walletId = 'wallet_' + Date.now();
@@ -262,6 +265,7 @@ async function handleCreateWallet(data) {
       address,
       encryptedSeed,
       derivationPath,
+      coinType: coinType, // Store coin type for future use
       createdAt: Date.now()
     };
     
@@ -327,35 +331,79 @@ async function handleUnlockWallet(data) {
       throw new Error('No wallet found. Please create a wallet first.');
     }
 
-    console.log('[Background] Decrypting wallet:', wallet.name);
-    const mnemonic = await decryptMnemonic(wallet.encryptedSeed, password);
+    console.log('[Background] Decrypting wallet:', wallet.name, 'Import method:', wallet.importMethod);
+    const decrypted = await decryptMnemonic(wallet.encryptedSeed, password);
 
-    if (!mnemonic) {
+    if (!decrypted) {
       throw new Error('Failed to decrypt wallet. Wrong password?');
     }
 
-    console.log('[Background] Deriving address...');
-    const derived = await self.ZcashKeys.deriveAddress(mnemonic, 0, 0);
+    let address, privateKeyHex;
 
-    if (!derived || !derived.address) {
-      throw new Error('Failed to derive address');
+    // Check if wallet was imported via private key
+    if (wallet.importMethod === 'privateKey') {
+      console.log('[Background] Wallet imported via private key, deriving address...');
+      
+      // decrypted contains the private key hex, need to derive address
+      const publicKey = await self.ZcashKeys.getPublicKey(new Uint8Array(decrypted.match(/.{1,2}/g).map(byte => parseInt(byte, 16))));
+      
+      // Hash public key
+      const sha256 = await crypto.subtle.digest('SHA-256', publicKey);
+      const sha256Hex = Array.from(new Uint8Array(sha256)).map(b => b.toString(16).padStart(2, '0')).join('');
+      const ripemd160 = CryptoJS.RIPEMD160(CryptoJS.enc.Hex.parse(sha256Hex));
+      const pubKeyHash = new Uint8Array(20);
+      for (let i = 0; i < 5; i++) {
+        pubKeyHash[i * 4] = (ripemd160.words[i] >>> 24) & 0xff;
+        pubKeyHash[i * 4 + 1] = (ripemd160.words[i] >>> 16) & 0xff;
+        pubKeyHash[i * 4 + 2] = (ripemd160.words[i] >>> 8) & 0xff;
+        pubKeyHash[i * 4 + 3] = ripemd160.words[i] & 0xff;
+      }
+      
+      // Build address
+      const ZCASH_PREFIX = 0x1cb8;
+      const payload = new Uint8Array(22);
+      payload[0] = (ZCASH_PREFIX >> 8) & 0xff;
+      payload[1] = ZCASH_PREFIX & 0xff;
+      payload.set(pubKeyHash, 2);
+      
+      // Base58 encode
+      address = await self.ZcashKeys.base58Encode(payload);
+      privateKeyHex = decrypted;
+      
+      console.log('[Background] Address derived from private key:', address);
+      
+    } else {
+      // Normal seed phrase unlock
+      console.log('[Background] Deriving address from seed phrase...');
+      
+      const coinType = wallet.coinType !== undefined ? wallet.coinType : 133;
+      console.log('[Background] Using coin type:', coinType);
+      
+      const derived = await self.ZcashKeys.deriveAddress(decrypted, 0, 0, coinType);
+
+      if (!derived || !derived.address) {
+        throw new Error('Failed to derive address');
+      }
+
+      address = derived.address;
+      privateKeyHex = derived.privateKey;
+      
+      console.log('[Background] Address derived from mnemonic:', address);
     }
 
-    console.log('[Background] Address derived:', derived.address);
-
     // Update wallet state
-    walletState.address = derived.address;
+    walletState.address = address;
     walletState.isLocked = false;
     walletState.balance = 0;
 
-    // Cache decrypted mnemonic and private key in session storage for transaction signing
+    // Cache in session storage for transaction signing
     await chrome.storage.session.set({
       walletUnlocked: true,
-      walletAddress: derived.address,
+      walletAddress: address,
       unlockTime: Date.now(),
       activeWalletId: wallet.id,
-      cachedMnemonic: mnemonic,
-      cachedPrivateKey: derived.privateKey,
+      cachedMnemonic: wallet.importMethod === 'privateKey' ? null : decrypted,
+      cachedPrivateKey: privateKeyHex,
     });
 
     console.log('[Background] Wallet unlocked successfully:', wallet.name);
@@ -367,7 +415,7 @@ async function handleUnlockWallet(data) {
 
     return {
       success: true,
-      address: derived.address,
+      address: address,
       walletName: wallet.name
     };
   } catch (error) {
@@ -393,21 +441,59 @@ async function handleLockWallet() {
 
 async function handleImportWallet(data) {
   try {
-    const { mnemonic, password, name } = data;
+    const { method, mnemonic, privateKey, password, name } = data;
     
     if (!password || password.length < 8) {
       throw new Error('Password must be at least 8 characters');
     }
     
-    if (!mnemonic || mnemonic.trim().split(/\s+/).length !== 24) {
-      throw new Error('Invalid mnemonic - must be 24 words');
+    let address, derivationPath, encryptedSeed, finalCoinType, privateKeyHex;
+    
+    // Handle different import methods
+    if (method === 'phrase' && mnemonic) {
+      // Seed phrase import
+      const wordCount = mnemonic.trim().split(/\s+/).length;
+      if (wordCount !== 12 && wordCount !== 24) {
+        throw new Error('Invalid mnemonic - must be 12 or 24 words');
+      }
+      
+      const seedPhrase = mnemonic.trim();
+      
+      // Encrypt seed
+      encryptedSeed = await encrypt(seedPhrase, password);
+      
+      // Both Zinc and Zerdinals use coin type 133 (Zcash mainnet standard)
+      // The test confirmed this is the correct path: m/44'/133'/0'/0/0
+      finalCoinType = 133;
+      const result = await self.ZcashKeys.deriveAddress(seedPhrase, 0, 0, finalCoinType);
+      
+      address = result.address;
+      derivationPath = result.derivationPath;
+      privateKeyHex = result.privateKey;
+      
+      console.log('[Background] Using Zcash derivation (coin type 133)');
+      console.log('[Background] Derived address:', address);
+      
+    } else if (method === 'privateKey' && privateKey) {
+      // Private key import
+      const trimmedKey = privateKey.trim();
+      
+      // Import from WIF private key
+      const result = await self.ZcashKeys.importFromPrivateKey(trimmedKey);
+      
+      address = result.address;
+      privateKeyHex = result.privateKey;
+      derivationPath = 'imported'; // No derivation path for private keys
+      finalCoinType = null; // No coin type for private keys
+      
+      // Encrypt the private key for storage (we store the hex format)
+      encryptedSeed = await encrypt(privateKeyHex, password);
+      
+      console.log('[Background] Private key imported, address:', address);
+      
+    } else {
+      throw new Error('Invalid import data - please provide either a seed phrase or private key');
     }
-    
-    // Encrypt seed
-    const encryptedSeed = await encrypt(mnemonic.trim(), password);
-    
-    // Derive address
-    const { address, derivationPath } = await self.ZcashKeys.deriveAddress(mnemonic.trim(), 0, 0);
     
     // Create wallet object
     const walletId = 'wallet_' + Date.now();
@@ -417,6 +503,8 @@ async function handleImportWallet(data) {
       address,
       encryptedSeed,
       derivationPath,
+      coinType: finalCoinType,
+      importMethod: method, // Track how it was imported
       createdAt: Date.now(),
       imported: true
     };
@@ -430,16 +518,18 @@ async function handleImportWallet(data) {
     walletState.isLocked = false;
     walletState.address = address;
     
-    // Save session state
+    // Save session state (cache private key for signing)
     await chrome.storage.session.set({
       walletUnlocked: true,
       walletAddress: address,
       unlockTime: Date.now(),
-      activeWalletId: walletId
+      activeWalletId: walletId,
+      cachedPrivateKey: privateKeyHex
     });
     
     console.log('[Background] Wallet imported successfully:', wallet.name);
     console.log('[Background] Address:', address);
+    console.log('[Background] Import method:', method);
     
     // Auto-refresh balance
     handleRefreshBalance().catch(err => {
@@ -477,6 +567,15 @@ async function handleGetWallets() {
   };
 }
 
+// Cache for API responses to prevent redundant calls
+const apiCache = {
+  transactions: new Map(), // address -> { data, timestamp }
+  inscriptions: new Map()  // address -> { data, timestamp }
+};
+
+const CACHE_TTL = 30000; // 30 seconds
+const inFlightRequests = new Map(); // Track ongoing requests
+
 async function handleGetTransactions(data) {
   try {
     const { address } = data;
@@ -485,14 +584,89 @@ async function handleGetTransactions(data) {
       throw new Error('Address is required');
     }
 
+    // Check cache first
+    const cached = apiCache.transactions.get(address);
+    if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
+      console.log('[Background] Returning cached transactions for:', address);
+      return cached.data;
+    }
+
+    // Check if request is already in flight
+    const inFlight = inFlightRequests.get(`tx_${address}`);
+    if (inFlight) {
+      console.log('[Background] Request already in flight, waiting...');
+      return await inFlight;
+    }
+
     console.log('[Background] Fetching transactions for:', address);
 
-    // For now, return empty array (will be populated when API is available)
-    // TODO: Implement actual transaction fetching from blockchain API
-    return {
-      success: true,
-      transactions: []
-    };
+    // Create promise for in-flight tracking
+    const requestPromise = (async () => {
+      try {
+        
+        const proxyUrl = `https://vercel-proxy-loghorizon.vercel.app/api/transactions?address=${address}&limit=50`;
+        
+        console.log('[Background] Querying proxy:', proxyUrl);
+        
+        const response = await fetch(proxyUrl, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json'
+          }
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Proxy API error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (!data.success) {
+          throw new Error(data.error || 'Failed to fetch transactions');
+        }
+        
+        console.log('[Background] ✓ Fetched', data.transactions.length, 'transactions');
+        
+        const result = {
+          success: true,
+          transactions: data.transactions
+        };
+
+        // Cache the result
+        apiCache.transactions.set(address, {
+          data: result,
+          timestamp: Date.now()
+        });
+
+        return result;
+      } catch (error) {
+        console.error('[Background] Failed to fetch transactions:', error);
+        
+        // Return empty on error, but still cache to avoid spam
+        const result = {
+          success: true,
+          transactions: []
+        };
+        
+        apiCache.transactions.set(address, {
+          data: result,
+          timestamp: Date.now()
+        });
+        
+        return result;
+      }
+    })();
+
+    // Track in-flight request
+    inFlightRequests.set(`tx_${address}`, requestPromise);
+
+    try {
+      const result = await requestPromise;
+      return result;
+    } finally {
+      // Clean up in-flight tracking
+      inFlightRequests.delete(`tx_${address}`);
+    }
   } catch (error) {
     console.error('[Background] Failed to fetch transactions:', error);
     return {
@@ -511,28 +685,113 @@ async function handleGetInscriptions(data) {
       throw new Error('Address is required');
     }
 
+    // Check cache first
+    const cached = apiCache.inscriptions.get(address);
+    if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
+      console.log('[Background] Returning cached inscriptions for:', address);
+      return cached.data;
+    }
+
+    // Check if request is already in flight
+    const inFlight = inFlightRequests.get(`inscr_${address}`);
+    if (inFlight) {
+      console.log('[Background] Inscription request already in flight, waiting...');
+      return await inFlight;
+    }
+
     console.log('[Background] Fetching inscriptions for:', address);
 
-    // TODO: Implement actual inscription indexer
-    // Options:
-    // 1. Query Zerdinals API (if available)
-    // 2. Build custom indexer
-    // 3. Scan blockchain directly
-    
-    // For now, return empty (placeholder)
-    // When indexer is ready, this will return real data
-    return {
-      success: true,
-      zrc20: [],
-      nfts: []
-    };
+    // Create promise for in-flight tracking
+    const requestPromise = (async () => {
+      try {
+        // Fetch via Vercel proxy (queries Supabase indexer)
+        const proxyUrl = `https://vercel-proxy-loghorizon.vercel.app/api/inscriptions?address=${address}`;
+        
+        console.log('[Background] Querying inscriptions proxy:', proxyUrl);
+        
+        const response = await fetch(proxyUrl, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json'
+          }
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Inscriptions API error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (!data.success) {
+          throw new Error(data.error || 'Failed to fetch inscriptions');
+        }
+        
+        console.log('[Background] ✓ Fetched', 
+          data.zinc?.zrc20?.length || 0, 'Zinc tokens,', 
+          data.zinc?.nfts?.length || 0, 'Zinc NFTs,',
+          data.zerdinals?.inscriptions?.length || 0, 'Zerdinals inscriptions');
+        
+        // Return dual protocol data
+        const result = {
+          success: true,
+          zinc: {
+            zrc20: data.zinc?.zrc20 || [],
+            nfts: data.zinc?.nfts || [],
+            inscriptions: data.zinc?.inscriptions || []
+          },
+          zerdinals: {
+            inscriptions: data.zerdinals?.inscriptions || []
+          }
+        };
+
+        // Cache the result
+        apiCache.inscriptions.set(address, {
+          data: result,
+          timestamp: Date.now()
+        });
+
+        return result;
+      } catch (error) {
+        console.error('[Background] Failed to fetch inscriptions:', error);
+        
+        // Return empty on error, but still cache to avoid spam
+        const result = {
+          success: true,
+          zinc: {
+            zrc20: [],
+            nfts: []
+          },
+          zerdinals: {
+            inscriptions: []
+          }
+        };
+        
+        apiCache.inscriptions.set(address, {
+          data: result,
+          timestamp: Date.now()
+        });
+        
+        return result;
+      }
+    })();
+
+    // Track in-flight request
+    inFlightRequests.set(`inscr_${address}`, requestPromise);
+
+    try {
+      const result = await requestPromise;
+      return result;
+    } finally {
+      // Clean up in-flight tracking
+      inFlightRequests.delete(`inscr_${address}`);
+    }
   } catch (error) {
     console.error('[Background] Failed to fetch inscriptions:', error);
     return {
       success: false,
       error: error.message,
-      zrc20: [],
-      nfts: []
+      zinc: { zrc20: [], nfts: [] },
+      zerdinals: { inscriptions: [] }
     };
   }
 }
@@ -558,8 +817,9 @@ async function handleSwitchWallet(data) {
       throw new Error('Invalid password');
     }
     
-    // Derive keys
-    const { address, privateKey } = await self.ZcashKeys.deriveAddress(mnemonic, 0, 0);
+    // Derive keys using stored coin type
+    const coinType = wallet.coinType !== undefined ? wallet.coinType : 133;
+    const { address, privateKey } = await self.ZcashKeys.deriveAddress(mnemonic, 0, 0, coinType);
     
     // Set as active
     await setActiveWallet(walletId);
@@ -594,6 +854,140 @@ async function handleSwitchWallet(data) {
     };
   } catch (error) {
     console.error('[Background] Wallet switch failed:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+async function handleRenameWallet(data) {
+  try {
+    const { walletId, name } = data;
+    
+    if (!name || !name.trim()) {
+      throw new Error('Wallet name is required');
+    }
+    
+    const { wallets } = await getAllWallets();
+    const walletIndex = wallets.findIndex(w => w.id === walletId);
+    
+    if (walletIndex === -1) {
+      throw new Error('Wallet not found');
+    }
+    
+    // Update wallet name in the array
+    wallets[walletIndex].name = name.trim();
+    
+    // Save updated wallets array
+    await chrome.storage.local.set({ wallets });
+    
+    console.log('[Background] Wallet renamed to:', name);
+    
+    return {
+      success: true,
+      walletId,
+      name: wallets[walletIndex].name
+    };
+  } catch (error) {
+    console.error('[Background] Wallet rename failed:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+async function handleDeleteWallet(data) {
+  try {
+    const { walletId, password } = data;
+    
+    const { wallets, activeWalletId } = await getAllWallets();
+    const wallet = wallets.find(w => w.id === walletId);
+    
+    if (!wallet) {
+      throw new Error('Wallet not found');
+    }
+    
+    // Check if this is the last wallet
+    if (wallets.length === 1) {
+      throw new Error('Cannot delete your last wallet');
+    }
+    
+    // Verify password
+    const mnemonic = await decryptMnemonic(wallet.encryptedSeed, password);
+    if (!mnemonic) {
+      throw new Error('Invalid password');
+    }
+    
+    const isDeletingActiveWallet = walletId === activeWalletId;
+    
+    // If deleting active wallet, switch to another wallet first
+    if (isDeletingActiveWallet) {
+      // Find first wallet that isn't the one being deleted
+      const nextWallet = wallets.find(w => w.id !== walletId);
+      
+      if (nextWallet) {
+        console.log('[Background] Auto-switching to wallet:', nextWallet.name);
+        
+        // Derive keys for next wallet
+        const nextMnemonic = await decryptMnemonic(nextWallet.encryptedSeed, password);
+        if (!nextMnemonic) {
+          throw new Error('Failed to unlock next wallet. Please try again.');
+        }
+        
+        const coinType = nextWallet.coinType !== undefined ? nextWallet.coinType : 133;
+        const { address, privateKey } = await self.ZcashKeys.deriveAddress(nextMnemonic, 0, 0, coinType);
+        
+        // Set next wallet as active
+        await setActiveWallet(nextWallet.id);
+        
+        // Update state
+        walletState.isLocked = false;
+        walletState.address = address;
+        walletState.balance = 0;
+        
+        // Cache in session
+        await chrome.storage.session.set({
+          walletUnlocked: true,
+          walletAddress: address,
+          unlockTime: Date.now(),
+          activeWalletId: nextWallet.id,
+          cachedMnemonic: nextMnemonic,
+          cachedPrivateKey: privateKey
+        });
+      }
+    }
+    
+    // Delete wallet from wallets array
+    const updatedWallets = wallets.filter(w => w.id !== walletId);
+    await chrome.storage.local.set({ wallets: updatedWallets });
+    
+    // Verify deletion
+    const { wallets: checkWallets } = await getAllWallets();
+    const stillExists = checkWallets.find(w => w.id === walletId);
+    if (stillExists) {
+      console.error('[Background] FAILED to delete wallet from storage!');
+      throw new Error('Failed to delete wallet from storage');
+    }
+    
+    console.log('[Background] Wallet deleted:', wallet.name, 'ID:', walletId);
+    console.log('[Background] Remaining wallets:', updatedWallets.length);
+    
+    // Refresh balance if we switched wallets
+    if (isDeletingActiveWallet) {
+      handleRefreshBalance().catch(err => {
+        console.warn('[Background] Auto-refresh balance failed:', err);
+      });
+    }
+    
+    return {
+      success: true,
+      walletId,
+      switched: isDeletingActiveWallet
+    };
+  } catch (error) {
+    console.error('[Background] Wallet deletion failed:', error);
     return {
       success: false,
       error: error.message
@@ -922,21 +1316,33 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             result = await handleSwitchWallet(message.data);
             break;
             
+          case 'RENAME_WALLET':
+            result = await handleRenameWallet(message.data);
+            break;
+            
+          case 'DELETE_WALLET':
+            result = await handleDeleteWallet(message.data);
+            break;
+            
           case 'REFRESH_BALANCE':
             result = await handleRefreshBalance();
             break;
           
           case 'SEND_ZEC':
-            return await handleSendZec(message.data);
+            result = await handleSendZec(message.data);
+            break;
       
           case 'CREATE_INSCRIPTION':
-            return await handleInscription(message.data);
+            result = await handleInscription(message.data);
+            break;
 
           case 'GET_TRANSACTIONS':
-            return await handleGetTransactions(message.data);
+            result = await handleGetTransactions(message.data);
+            break;
 
           case 'GET_INSCRIPTIONS':
-            return await handleGetInscriptions(message.data);
+            result = await handleGetInscriptions(message.data);
+            break;
             
           default:
             throw new Error(`Unknown action: ${message.action}`);

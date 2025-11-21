@@ -83,7 +83,7 @@ export default function OnboardingPage({ onComplete }: Props) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900">
         <div className="card max-w-md w-full text-center">
-          <h1 className="text-3xl font-bold mb-2 text-white">Zinc Wallet</h1>
+          <h1 className="text-3xl font-bold mb-2 text-white">Zync Wallet</h1>
           <p className="text-zinc-600 mb-8">Your gateway to Zcash inscriptions, ZRC-20 tokens, and NFTs</p>
           
           <div className="space-y-4">
@@ -207,7 +207,7 @@ export default function OnboardingPage({ onComplete }: Props) {
           ← Back
         </button>
         
-        <h2 className="text-2xl font-bold mb-6">Import Wallet</h2>
+        <h1 className="text-4xl font-bold mb-4">Zync Wallet</h1>
         
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">

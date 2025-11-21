@@ -4,7 +4,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                 Zinc Wallet Extension                    │
+│                 Zync Wallet Extension                    │
 │              (Runs in user's browser)                    │
 └─────────────────────────────────────────────────────────┘
                         ↓ API calls

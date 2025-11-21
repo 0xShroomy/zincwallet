@@ -1,4 +1,4 @@
-# Zinc Wallet - Browser Extension
+# Zync Wallet - Browser Extension
 
 A fully functional browser extension wallet for the **Zinc Protocol** on Zcash, supporting ZRC-20 tokens, NFT inscriptions, and dApp integration.
 

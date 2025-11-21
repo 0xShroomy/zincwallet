@@ -44,7 +44,7 @@ export default function UnlockPage({ onUnlock }: Props) {
     <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900">
       <div className="card max-w-md w-full">
         <div className="text-center mb-6">
-          <h1 className="text-3xl font-bold mb-2">Zinc Wallet</h1>
+          <h1 className="text-3xl font-bold mb-2">Zync Wallet</h1>
           <p className="text-zinc-600">Enter your password to unlock</p>
         </div>
 

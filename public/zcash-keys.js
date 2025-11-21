@@ -8,6 +8,8 @@
 
 'use strict';
 
+/* global CryptoJS */
+
 // Expose ZcashKeys namespace
 self.ZcashKeys = (function() {
   
@@ -99,36 +101,58 @@ self.ZcashKeys = (function() {
    * Path format: m/44'/133'/0'/0/0 (for Zcash mainnet)
    */
   async function deriveKeyFromPath(seed, path) {
-    // This is a simplified BIP32 implementation
-    // For production, use @scure/bip32 or similar
+    // BIP32 key derivation - now with PROPER public key handling
     
-    // Parse path
+    // Step 1: Derive master key from seed using HMAC-SHA512
+    // BIP32: I = HMAC-SHA512(Key = "Bitcoin seed", Data = seed)
+    const masterHmac = await crypto.subtle.importKey(
+      'raw',
+      new TextEncoder().encode('Bitcoin seed'),
+      { name: 'HMAC', hash: 'SHA-512' },
+      false,
+      ['sign']
+    );
+    
+    const masterI = new Uint8Array(await crypto.subtle.sign('HMAC', masterHmac, seed));
+    let key = masterI.slice(0, 32); // Master private key
+    let chainCode = masterI.slice(32, 64); // Master chain code
+    
+    // Step 2: Parse path and derive child keys
     const segments = path.split('/').slice(1); // Remove 'm'
-    
-    let key = seed.slice(0, 32); // Master private key
-    let chainCode = seed.slice(32, 64); // Chain code
     
     for (const segment of segments) {
       const hardened = segment.endsWith("'");
       const index = parseInt(hardened ? segment.slice(0, -1) : segment);
       const indexWithFlag = hardened ? index + 0x80000000 : index;
       
-      // Derive child key (simplified - not full BIP32)
-      const data = new Uint8Array(37);
+      // BIP32 child key derivation
+      let data;
       if (hardened) {
+        // Hardened: data = 0x00 || private_key || index
+        data = new Uint8Array(37);
         data[0] = 0x00;
         data.set(key, 1);
+        data.set(new Uint8Array([
+          (indexWithFlag >> 24) & 0xff,
+          (indexWithFlag >> 16) & 0xff,
+          (indexWithFlag >> 8) & 0xff,
+          indexWithFlag & 0xff
+        ]), 33);
       } else {
-        // Would need public key here, using key for simplification
-        data.set(key, 0);
+        // Non-hardened: data = public_key || index
+        // FIXED: Use real public key, not private key!
+        const publicKey = await getPublicKey(key);
+        data = new Uint8Array(37);
+        data.set(publicKey, 0); // 33 bytes compressed public key
+        data.set(new Uint8Array([
+          (indexWithFlag >> 24) & 0xff,
+          (indexWithFlag >> 16) & 0xff,
+          (indexWithFlag >> 8) & 0xff,
+          indexWithFlag & 0xff
+        ]), 33);
       }
-      data.set(new Uint8Array([
-        (indexWithFlag >> 24) & 0xff,
-        (indexWithFlag >> 16) & 0xff,
-        (indexWithFlag >> 8) & 0xff,
-        indexWithFlag & 0xff
-      ]), 33);
       
+      // HMAC-SHA512(chain_code, data)
       const hmac = await crypto.subtle.importKey(
         'raw',
         chainCode,
@@ -137,33 +161,55 @@ self.ZcashKeys = (function() {
         ['sign']
       );
       
-      const signed = await crypto.subtle.sign('HMAC', hmac, data);
-      const I = new Uint8Array(signed);
+      const I = new Uint8Array(await crypto.subtle.sign('HMAC', hmac, data));
       
-      key = I.slice(0, 32);
+      // Parse I into IL (32 bytes) and IR (32 bytes)
+      const IL = I.slice(0, 32);
       chainCode = I.slice(32, 64);
+      
+      // BIP32: child_private_key = (parse256(IL) + parent_private_key) mod n
+      // Where n is the secp256k1 curve order
+      const n = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141n;
+      
+      // Convert IL and parent key to BigInt
+      let ILnum = 0n;
+      for (let i = 0; i < IL.length; i++) {
+        ILnum = (ILnum << 8n) | BigInt(IL[i]);
+      }
+      
+      let parentNum = 0n;
+      for (let i = 0; i < key.length; i++) {
+        parentNum = (parentNum << 8n) | BigInt(key[i]);
+      }
+      
+      // Add and mod n
+      let childNum = (ILnum + parentNum) % n;
+      
+      // Convert back to bytes
+      const childKey = new Uint8Array(32);
+      for (let i = 31; i >= 0; i--) {
+        childKey[i] = Number(childNum & 0xFFn);
+        childNum >>= 8n;
+      }
+      
+      key = childKey;
     }
     
     return { privateKey: key, chainCode };
   }
   
   /**
-   * Get public key from private key using secp256k1
+   * Get public key from private key using REAL secp256k1
+   * This uses proper elliptic curve math from fix-zcash-keys.js
    */
   async function getPublicKey(privateKey) {
-    // This requires secp256k1 elliptic curve operations
-    // For now, derive deterministically from private key hash
-    // In production, use proper secp256k1 library
+    // Use the real secp256k1 implementation
+    if (self.FixedZcashKeys) {
+      return self.FixedZcashKeys.getPublicKey(privateKey);
+    }
     
-    const hash = await crypto.subtle.digest('SHA-256', privateKey);
-    const pubKeyHash = new Uint8Array(hash);
-    
-    // Compressed public key format (33 bytes: 0x02/0x03 + 32 bytes)
-    const publicKey = new Uint8Array(33);
-    publicKey[0] = 0x02 + (pubKeyHash[31] & 0x01); // Even/odd prefix
-    publicKey.set(pubKeyHash.slice(0, 32), 1);
-    
-    return publicKey;
+    // Fallback error if fix-zcash-keys.js not loaded
+    throw new Error('FixedZcashKeys not loaded! Import fix-zcash-keys.js first');
   }
   
   /**
@@ -196,18 +242,22 @@ self.ZcashKeys = (function() {
   
   /**
    * Derive address from mnemonic using BIP44
-   * Path: m/44'/133'/account'/0/address_index
+   * Path: m/44'/coinType'/account'/0/address_index
    */
-  async function deriveAddress(mnemonic, accountIndex = 0, addressIndex = 0) {
+  async function deriveAddress(mnemonic, accountIndex = 0, addressIndex = 0, coinType = null) {
     try {
       console.log('[ZcashKeys] Deriving address for account', accountIndex, 'index', addressIndex);
       
       // Generate seed from mnemonic
       const seed = await mnemonicToSeed(mnemonic);
       
-      // BIP44 path for Zcash mainnet
-      const path = `m/44'/${ZCASH_COIN_TYPE}'/${accountIndex}'/0/${addressIndex}`;
-      console.log('[ZcashKeys] Derivation path:', path);
+      // Use specified coin type or default to Zcash (133)
+      // Zerdinals uses Bitcoin coin type (0) for compatibility
+      const useCoinType = coinType !== null ? coinType : ZCASH_COIN_TYPE;
+      
+      // BIP44 path
+      const path = `m/44'/${useCoinType}'/${accountIndex}'/0/${addressIndex}`;
+      console.log('[ZcashKeys] Derivation path:', path, `(coin type: ${useCoinType})`);
       
       // Derive key
       const { privateKey } = await deriveKeyFromPath(seed, path);
@@ -215,9 +265,20 @@ self.ZcashKeys = (function() {
       // Get public key
       const publicKey = await getPublicKey(privateKey);
       
-      // Hash public key to get pubKeyHash (HASH160)
-      const sha = await crypto.subtle.digest('SHA-256', publicKey);
-      const pubKeyHash = new Uint8Array(sha).slice(0, 20);
+      // Hash public key to get pubKeyHash (HASH160 = SHA256 + RIPEMD160)
+      // Step 1: SHA-256
+      const sha256 = await crypto.subtle.digest('SHA-256', publicKey);
+      const sha256Hex = Array.from(new Uint8Array(sha256)).map(b => b.toString(16).padStart(2, '0')).join('');
+      
+      // Step 2: RIPEMD-160 (using CryptoJS)
+      const ripemd160 = CryptoJS.RIPEMD160(CryptoJS.enc.Hex.parse(sha256Hex));
+      const pubKeyHash = new Uint8Array(ripemd160.words.length * 4);
+      for (let i = 0; i < ripemd160.words.length; i++) {
+        pubKeyHash[i * 4] = (ripemd160.words[i] >>> 24) & 0xff;
+        pubKeyHash[i * 4 + 1] = (ripemd160.words[i] >>> 16) & 0xff;
+        pubKeyHash[i * 4 + 2] = (ripemd160.words[i] >>> 8) & 0xff;
+        pubKeyHash[i * 4 + 3] = ripemd160.words[i] & 0xff;
+      }
       
       // Build address payload: 2-byte prefix + 20-byte hash
       const payload = new Uint8Array(22);
@@ -244,11 +305,111 @@ self.ZcashKeys = (function() {
     }
   }
   
+  /**
+   * Import address from private key (supports both WIF and hex formats)
+   * - WIF format: L... or K... (Base58 encoded, starts with L/K for mainnet compressed)
+   * - Hex format: 0x... (64 hex characters, used by Zinc.is)
+   */
+  async function importFromPrivateKey(privateKeyInput) {
+    try {
+      console.log('[ZcashKeys] Importing from private key...');
+      
+      let privateKey;
+      let isCompressed = true; // Default to compressed
+      
+      // Check if it's hex format (0x... or raw hex)
+      if (privateKeyInput.startsWith('0x') || (privateKeyInput.length === 64 && /^[0-9a-fA-F]+$/.test(privateKeyInput))) {
+        console.log('[ZcashKeys] Detected hex format private key');
+        
+        // Remove 0x prefix if present
+        const hexKey = privateKeyInput.startsWith('0x') ? privateKeyInput.slice(2) : privateKeyInput;
+        
+        // Validate hex length (should be 64 characters = 32 bytes)
+        if (hexKey.length !== 64) {
+          throw new Error('Invalid hex private key length (expected 64 characters)');
+        }
+        
+        // Convert hex to bytes
+        privateKey = new Uint8Array(32);
+        for (let i = 0; i < 32; i++) {
+          privateKey[i] = parseInt(hexKey.substr(i * 2, 2), 16);
+        }
+        
+        console.log('[ZcashKeys] Hex private key decoded successfully');
+      } else {
+        console.log('[ZcashKeys] Detected WIF format private key');
+        
+        // Decode WIF format (Base58Check)
+        const decoded = await base58Decode(privateKeyInput);
+        
+        // WIF format: [1 byte version][32 bytes private key][optional 1 byte compression flag][4 bytes checksum]
+        if (decoded.length !== 37 && decoded.length !== 38) {
+          throw new Error('Invalid WIF private key format');
+        }
+        
+        // Check version byte (0x80 for mainnet)
+        if (decoded[0] !== 0x80) {
+          throw new Error('Invalid private key version - must be mainnet');
+        }
+        
+        // Extract private key (32 bytes after version byte)
+        privateKey = decoded.slice(1, 33);
+        
+        // Check if compressed (length 38 means compressed, last byte before checksum should be 0x01)
+        isCompressed = decoded.length === 38 && decoded[33] === 0x01;
+        
+        console.log('[ZcashKeys] WIF private key decoded, compressed:', isCompressed);
+      }
+      
+      // Derive public key
+      const publicKey = await getPublicKey(privateKey);
+      
+      // Hash public key to get pubKeyHash (HASH160 = SHA256 + RIPEMD160)
+      const sha256 = await crypto.subtle.digest('SHA-256', publicKey);
+      const sha256Hex = Array.from(new Uint8Array(sha256)).map(b => b.toString(16).padStart(2, '0')).join('');
+      
+      const ripemd160 = CryptoJS.RIPEMD160(CryptoJS.enc.Hex.parse(sha256Hex));
+      const pubKeyHash = new Uint8Array(ripemd160.words.length * 4);
+      for (let i = 0; i < ripemd160.words.length; i++) {
+        pubKeyHash[i * 4] = (ripemd160.words[i] >>> 24) & 0xff;
+        pubKeyHash[i * 4 + 1] = (ripemd160.words[i] >>> 16) & 0xff;
+        pubKeyHash[i * 4 + 2] = (ripemd160.words[i] >>> 8) & 0xff;
+        pubKeyHash[i * 4 + 3] = ripemd160.words[i] & 0xff;
+      }
+      
+      // Build address payload: 2-byte prefix + 20-byte hash
+      const payload = new Uint8Array(22);
+      payload[0] = (ZCASH_MAINNET_P2PKH_PREFIX >> 8) & 0xff;
+      payload[1] = ZCASH_MAINNET_P2PKH_PREFIX & 0xff;
+      payload.set(pubKeyHash, 2);
+      
+      console.log('[ZcashKeys] Encoding address with Base58Check...');
+      
+      // Base58Check encode
+      const address = await base58Encode(payload);
+      
+      console.log('[ZcashKeys] Address imported successfully:', address);
+      
+      return {
+        address,
+        publicKey: Array.from(publicKey).map(b => b.toString(16).padStart(2, '0')).join(''),
+        privateKey: Array.from(privateKey).map(b => b.toString(16).padStart(2, '0')).join(''),
+        source: 'privateKey'
+      };
+    } catch (error) {
+      console.error('[ZcashKeys] Private key import failed:', error);
+      throw new Error('Failed to import private key: ' + error.message);
+    }
+  }
+  
   return {
     deriveAddress,
+    importFromPrivateKey,
+    getPublicKey,
     mnemonicToSeed,
     deriveKeyFromPath,
     base58Decode,
+    base58Encode,
   };
   
 })();

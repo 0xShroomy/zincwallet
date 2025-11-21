@@ -1,0 +1,43 @@
+Thank you for your purchase!
+
+What you have received is this instruction file and a one-time password (check your e-mail for a "license key") allowing you to generate an API key. You need to use it within 30 days, otherwise it becomes invalid. Here are your next steps:
+
+1. Go to https://api.blockchair.com/premium
+2. Enter your one-time password into the "I want to activate an API key I've just purchased..." form and click on "Continue"
+3. Fill in a small form (your e-mail address and some other data) and click on "Continue"
+4. A secret API key will be generated. Please store it before you close the page. Now you can use your key to access our Premium API.
+
+After you have activated and received your key, you can track some basic stats and extend your subscription:
+
+1. Go to https://api.blockchair.com/premium
+2. Enter your secret API key into the "I already have an API key and would like to see some stats or extend my subscription..." form and click on "Continue"
+3. If you'd like to extend your subscription, choose an option from the "Extend your subscription" menu. Once you've purchased a one-time extension password, enter it into the "I've already got an extension password" form below and click "Continue".
+
+If you experience any problems, please contact our support team via e-mail (info@blockchair.com).
+
+
+##KEYDOWNBELOW##
+Licentiesleutel: PA__59hAZNUsWiqfmOxLcgY6LEOgJmtL
+
+
+
+
+
+
+
+API KEY ( 50.000 CREDITS / 50$)
+
+Your key has been successfully activated. Please copy your key and store it before closing the page, as your one-time password can't be used for the second time.
+API key:
+A___EsSizQQ9Y2ukrBGc1X6tGbsogmFz
+
+
+How to use the key:
+
+In order to use your API key, you need to append ?key=A___EsSizQQ9Y2ukrBGc1X6tGbsogmFz or &key=A___EsSizQQ9Y2ukrBGc1X6tGbsogmFz to the end of request URLs. You should use ? if there are no other parameters in the URL, and & otherwise. Here are three examples of correct URLs:
+
+https://api.blockchair.com/bitcoin/dashboards/block/0?key=A___EsSizQQ9Y2ukrBGc1X6tGbsogmFz
+
+https://api.blockchair.com/bitcoin/dashboards/block/0?limit=0&key=A___EsSizQQ9Y2ukrBGc1X6tGbsogmFz
+
+https://api.blockchair.com/bitcoin/dashboards/block/0?key=A___EsSizQQ9Y2ukrBGc1X6tGbsogmFz&limit=0

@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Detailed Derivation Debug Tool</title>
+  <style>
+    body {
+      font-family: monospace;
+      padding: 20px;
+      max-width: 1200px;
+      margin: 0 auto;
+      background: #1a1a1a;
+      color: #fff;
+      font-size: 12px;
+    }
+    input, button {
+      display: block;
+      margin: 10px 0;
+      padding: 10px;
+      width: 100%;
+      box-sizing: border-box;
+      background: #2a2a2a;
+      color: #fff;
+      border: 1px solid #444;
+      font-family: monospace;
+    }
+    button {
+      cursor: pointer;
+      background: #0066cc;
+      font-weight: bold;
+    }
+    button:hover {
+      background: #0052a3;
+    }
+    .result {
+      margin: 10px 0;
+      padding: 15px;
+      background: #2a2a2a;
+      border-left: 3px solid #0066cc;
+      word-break: break-all;
+    }
+    .match {
+      border-left-color: #00cc66;
+      background: #1a3a1a;
+    }
+    .mismatch {
+      border-left-color: #cc0000;
+      background: #3a1a1a;
+    }
+    .section {
+      margin: 20px 0;
+      padding: 15px;
+      background: #252525;
+      border: 1px solid #444;
+    }
+    .label {
+      color: #888;
+      font-size: 11px;
+      margin-bottom: 5px;
+    }
+    .value {
+      color: #0cf;
+      font-weight: bold;
+    }
+    h2 {
+      border-bottom: 2px solid #444;
+      padding-bottom: 10px;
+    }
+  </style>
+        }
+        .match {
+            background: #1a4d1a;
+            border-left-color: #0f0;
+        }
+        .address {
+            font-size: 14px;
+            word-break: break-all;
+        }
+        h3 {
+            color: #f7931a;
+            margin: 20px 0 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Zerdinals Derivation Path Finder</h1>
+    <p>This will test multiple derivation paths to find which one Zerdinals uses.</p>
+    
+    <label>Your 12-word Zerdinals phrase:</label>
+    <textarea id="mnemonic" rows="3" placeholder="word1 word2 word3 ... (12 words)"></textarea>
+    
+    <label>Your Zerdinals address (to match):</label>
+    <input type="text" id="targetAddress" placeholder="t1aRiDuyWGmSr9RZVTtX2qmKg4JMPiJDFnG" />
+    
+    <button onclick="testDerivation()">🔍 Test All Paths</button>
+    
+    <div id="results"></div>
+    
+    <script src="crypto-js.min.js"></script>
+    <script src="bip39.js"></script>
+    <script src="zcash-keys.js"></script>
+    <script>
+        async function testDerivation() {
+            const mnemonic = document.getElementById('mnemonic').value.trim();
+            const targetAddress = document.getElementById('targetAddress').value.trim();
+            const resultsDiv = document.getElementById('results');
+            
+            if (!mnemonic || mnemonic.split(/\s+/).length !== 12) {
+                alert('Please enter a valid 12-word phrase');
+                return;
+            }
+            
+            resultsDiv.innerHTML = '<h3>Testing derivation paths...</h3>';
+            
+            const paths = [
+                // Bitcoin coin type (0) - Standard BIP44
+                { name: 'Bitcoin Standard m/44\'/0\'/0\'/0/0', coinType: 0, account: 0, index: 0 },
+                { name: 'Bitcoin m/44\'/0\'/0\'/0/1', coinType: 0, account: 0, index: 1 },
+                { name: 'Bitcoin m/44\'/0\'/0\'/0/2', coinType: 0, account: 0, index: 2 },
+                { name: 'Bitcoin m/44\'/0\'/0\'/0/3', coinType: 0, account: 0, index: 3 },
+                { name: 'Bitcoin m/44\'/0\'/0\'/0/4', coinType: 0, account: 0, index: 4 },
+                { name: 'Bitcoin Account 1', coinType: 0, account: 1, index: 0 },
+                { name: 'Bitcoin Account 2', coinType: 0, account: 2, index: 0 },
+                
+                // Zcash coin type (133) - Standard BIP44
+                { name: 'Zcash Standard m/44\'/133\'/0\'/0/0', coinType: 133, account: 0, index: 0 },
+                { name: 'Zcash m/44\'/133\'/0\'/0/1', coinType: 133, account: 0, index: 1 },
+                { name: 'Zcash m/44\'/133\'/0\'/0/2', coinType: 133, account: 0, index: 2 },
+                { name: 'Zcash m/44\'/133\'/0\'/0/3', coinType: 133, account: 0, index: 3 },
+                { name: 'Zcash m/44\'/133\'/0\'/0/4', coinType: 133, account: 0, index: 4 },
+                { name: 'Zcash Account 1', coinType: 133, account: 1, index: 0 },
+                { name: 'Zcash Account 2', coinType: 133, account: 2, index: 0 },
+                
+                // Alternative coin types that Zerdinals might use
+                { name: 'Ordinals Coin Type 133 m/44\'/133\'/0\'/0/0', coinType: 133, account: 0, index: 0 },
+                { name: 'Coin Type 2 (Litecoin)', coinType: 2, account: 0, index: 0 },
+                { name: 'Coin Type 3 (Dogecoin)', coinType: 3, account: 0, index: 0 },
+                { name: 'Coin Type 145 (Bitcoin Cash)', coinType: 145, account: 0, index: 0 },
+                { name: 'Coin Type 141 (Komodo)', coinType: 141, account: 0, index: 0 },
+                
+                // Testnet
+                { name: 'Bitcoin Testnet', coinType: 1, account: 0, index: 0 },
+                { name: 'Zcash Testnet', coinType: 1, account: 0, index: 0 },
+            ];
+            
+            for (const path of paths) {
+                try {
+                    const result = await self.ZcashKeys.deriveAddress(
+                        mnemonic, 
+                        path.account, 
+                        path.index, 
+                        path.coinType
+                    );
+                    
+                    const isMatch = result.address === targetAddress;
+                    const pathStr = `m/44'/${path.coinType}'/${path.account}'/0/${path.index}`;
+                    
+                    resultsDiv.innerHTML += `
+                        <div class="result ${isMatch ? 'match' : ''}">
+                            <strong>${path.name}</strong>
+                            ${isMatch ? '✅ <strong style="color:#0f0">MATCH!</strong>' : ''}
+                            <div style="font-size:12px; color:#888; margin:5px 0;">
+                                Path: ${pathStr}
+                            </div>
+                            <div class="address">
+                                ${result.address}
+                            </div>
+                        </div>
+                    `;
+                } catch (error) {
+                    resultsDiv.innerHTML += `
+                        <div class="result" style="border-left-color:#f00;">
+                            <strong>${path.name}</strong>
+                            <div style="color:#f00;">Error: ${error.message}</div>
+                        </div>
+                    `;
+                }
+            }
+        }
+    </script>
+</body>
+</html>

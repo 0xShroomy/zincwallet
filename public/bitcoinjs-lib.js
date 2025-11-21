@@ -1,0 +1,1 @@
+Couldn't find the requested file /dist/bitcoinjs-lib.min.js in bitcoinjs-lib.

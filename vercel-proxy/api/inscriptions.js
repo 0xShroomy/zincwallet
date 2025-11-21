@@ -53,7 +53,7 @@ export default async function handler(req, res) {
   try {
     console.log('[Inscriptions API] Fetching data for:', address);
 
-    // Get ZRC-20 token balances
+    // Get ZRC-20 token balances (Zinc Protocol)
     const { data: zrc20Data, error: zrc20Error } = await supabase
       .from('zrc20_balances')
       .select('tick, balance, updated_at')
@@ -65,7 +65,7 @@ export default async function handler(req, res) {
       throw zrc20Error;
     }
 
-    // Get NFTs owned by address
+    // Get NFTs owned by address (Zinc Protocol)
     const { data: nftsData, error: nftsError } = await supabase
       .from('nft_ownership')
       .select('collection, token_id, metadata, txid, created_at')
@@ -75,6 +75,23 @@ export default async function handler(req, res) {
       console.error('[Inscriptions API] NFTs query error:', nftsError);
       throw nftsError;
     }
+
+    // Get all inscriptions for this address (both Zinc and Zerdinals)
+    const { data: inscriptionsData, error: inscriptionsError } = await supabase
+      .from('inscriptions')
+      .select('txid, block_height, timestamp, protocol, operation, data, content_type, content_size')
+      .eq('sender_address', address)
+      .order('block_height', { ascending: false })
+      .limit(100);
+
+    if (inscriptionsError) {
+      console.error('[Inscriptions API] Inscriptions query error:', inscriptionsError);
+      throw inscriptionsError;
+    }
+
+    // Separate by protocol
+    const zincInscriptions = (inscriptionsData || []).filter(i => i.protocol === 'zinc');
+    const zerdinalsInscriptions = (inscriptionsData || []).filter(i => i.protocol === 'zerdinals');
 
     // Format response
     const zrc20 = (zrc20Data || []).map(token => ({
@@ -91,12 +108,20 @@ export default async function handler(req, res) {
       owner: address
     }));
 
-    console.log(`[Inscriptions API] Found ${zrc20.length} tokens and ${nfts.length} NFTs`);
+    console.log(`[Inscriptions API] Found ${zrc20.length} tokens, ${nfts.length} NFTs, ${zincInscriptions.length} Zinc, ${zerdinalsInscriptions.length} Zerdinals`);
 
     return res.status(200).json({
       success: true,
-      zrc20,
-      nfts,
+      // Zinc Protocol data
+      zinc: {
+        zrc20,
+        nfts,
+        inscriptions: zincInscriptions
+      },
+      // Zerdinals Protocol data
+      zerdinals: {
+        inscriptions: zerdinalsInscriptions
+      },
       cached: false
     });
 
@@ -105,8 +130,14 @@ export default async function handler(req, res) {
     return res.status(500).json({
       success: false,
       error: error.message || 'Failed to fetch inscriptions',
-      zrc20: [],
-      nfts: []
+      zinc: {
+        zrc20: [],
+        nfts: [],
+        inscriptions: []
+      },
+      zerdinals: {
+        inscriptions: []
+      }
     });
   }
 }

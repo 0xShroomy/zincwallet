@@ -202,7 +202,7 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
       {/* Header */}
       <div className="bg-zinc-darker border-b border-zinc-800 px-6 py-4">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold text-white">Zinc Wallet</h1>
+          <h1 className="text-xl font-bold text-white">Zync Wallet</h1>
           <div className="flex items-center gap-2">
             <button
               onClick={handleSync}

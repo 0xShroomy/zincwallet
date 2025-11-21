@@ -18,6 +18,8 @@ export interface NFTInscription {
   txid: string;
   block?: number;
   owner: string;
+  contentType?: string;
+  contentSize?: number;
 }
 
 export interface InscriptionData {

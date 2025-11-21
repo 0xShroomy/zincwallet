@@ -12,7 +12,7 @@ self.LightwalletdClient = (function() {
   
   // PROXY CONFIGURATION
   // Vercel proxy endpoint for Zcash blockchain data
-  const PROXY_URL = 'https://vercel-proxy-boutbouwt.vercel.app/api';
+  const PROXY_URL = 'https://vercel-proxy-loghorizon.vercel.app/api';
   
   const NETWORKS = {
     mainnet: {

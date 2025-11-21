@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Test Zinc/Zerdinals Derivation Paths</title>
+  <style>
+    body { 
+      font-family: monospace; 
+      padding: 20px; 
+      background: #1a1a1a; 
+      color: #fff;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    h1 { color: #0f0; }
+    .result {
+      margin: 10px 0;
+      padding: 15px;
+      background: #2a2a2a;
+      border-left: 4px solid #888;
+      border-radius: 5px;
+    }
+    .match {
+      border-left-color: #0f0;
+      background: #1a3a1a;
+    }
+    button {
+      width: 100%;
+      padding: 20px;
+      margin: 20px 0;
+      background: #0f0;
+      border: none;
+      font-size: 18px;
+      font-weight: bold;
+      cursor: pointer;
+      border-radius: 5px;
+    }
+    .value { word-break: break-all; margin-top: 10px; font-size: 12px; color: #aaa; }
+  </style>
+</head>
+<body>
+  <h1>🔍 Testing Different Derivation Paths</h1>
+  
+  <p>Seed: <code>region gentle swing scan gown race design token river donkey deal still</code></p>
+  <p>Expected: <code>t1bDaS7kAMykasiqvfMxBn3sc37XP5JKL4E</code></p>
+  
+  <button onclick="runTest()">🚀 TEST ALL PATHS</button>
+  
+  <div id="output"></div>
+  
+  <script src="crypto-js.min.js"></script>
+  <script src="bip39.js"></script>
+  <script src="fix-zcash-keys.js"></script>
+  <script src="zcash-keys.js"></script>
+  <script>
+    async function runTest() {
+      const output = document.getElementById('output');
+      const mnemonic = 'region gentle swing scan gown race design token river donkey deal still';
+      const expectedAddress = 't1bDaS7kAMykasiqvfMxBn3sc37XP5JKL4E';
+      
+      output.innerHTML = '<h2 style="color:#0cf;">Testing...</h2>';
+      
+      // Test multiple derivation paths
+      const pathsToTest = [
+        { path: "m/44'/0'/0'/0/0", desc: "Standard BIP44 Bitcoin (coin type 0)" },
+        { path: "m/44'/133'/0'/0/0", desc: "Standard BIP44 Zcash (coin type 133)" },
+        { path: "m/44'/0'/0'/0", desc: "BIP44 without last index" },
+        { path: "m/44'/133'/0'/0", desc: "BIP44 Zcash without last index" },
+        { path: "m/0'/0'/0'", desc: "Simplified hardened path" },
+        { path: "m/0/0/0", desc: "Simplified non-hardened path" },
+        { path: "m/44'/0'/0'", desc: "BIP44 Bitcoin account only" },
+        { path: "m/44'/133'/0'", desc: "BIP44 Zcash account only" },
+      ];
+      
+      try {
+        for (const testCase of pathsToTest) {
+          console.log(`Testing path: ${testCase.path}`);
+          
+          try {
+            // Test by deriving with custom path
+            // We'll need to manually call the derivation with the custom path
+            
+            // Get seed from mnemonic using ZcashKeys wrapper
+            const seed = await self.ZcashKeys.mnemonicToSeed(mnemonic);
+            
+            // Derive key at this path
+            const derived = await self.ZcashKeys.deriveKeyFromPath(seed, testCase.path);
+            
+            // Derive address from the private key
+            const publicKey = await self.ZcashKeys.getPublicKey(derived.privateKey);
+            
+            // Hash public key to get address
+            const sha256 = await crypto.subtle.digest('SHA-256', publicKey);
+            const sha256Hex = Array.from(new Uint8Array(sha256)).map(b => b.toString(16).padStart(2, '0')).join('');
+            const ripemd160 = CryptoJS.RIPEMD160(CryptoJS.enc.Hex.parse(sha256Hex));
+            const pubKeyHash = new Uint8Array(ripemd160.words.length * 4);
+            for (let i = 0; i < ripemd160.words.length; i++) {
+              pubKeyHash[i * 4] = (ripemd160.words[i] >>> 24) & 0xff;
+              pubKeyHash[i * 4 + 1] = (ripemd160.words[i] >>> 16) & 0xff;
+              pubKeyHash[i * 4 + 2] = (ripemd160.words[i] >>> 8) & 0xff;
+              pubKeyHash[i * 4 + 3] = ripemd160.words[i] & 0xff;
+            }
+            
+            // Build address payload
+            const payload = new Uint8Array(22);
+            payload[0] = 0x1C;
+            payload[1] = 0xB8;
+            payload.set(pubKeyHash, 2);
+            
+            // Base58Check encode
+            const address = await self.ZcashKeys.base58Encode(payload);
+            
+            const match = address === expectedAddress;
+            
+            output.innerHTML += `
+              <div class="result ${match ? 'match' : ''}">
+                <h3>${match ? '✅ MATCH!' : '❌ No Match'} ${testCase.desc}</h3>
+                <div><strong>Path:</strong> ${testCase.path}</div>
+                <div class="value"><strong>Derived:</strong> ${address}</div>
+                ${match ? '<div style="color:#0f0;margin-top:10px;font-size:14px;">🎉 THIS IS THE PATH ZINC/ZERDINALS USE!</div>' : ''}
+              </div>
+            `;
+            
+            if (match) break; // Found it!
+            
+          } catch (e) {
+            output.innerHTML += `
+              <div class="result" style="border-left-color:#f00;">
+                <h3>⚠️ Error: ${testCase.desc}</h3>
+                <div><strong>Path:</strong> ${testCase.path}</div>
+                <div style="color:#f00;">${e.message}</div>
+              </div>
+            `;
+          }
+        }
+        
+        output.innerHTML += `
+          <div class="result" style="border-left-color:#ff0;">
+            <h3>📊 Summary</h3>
+            <p>Expected: <code>${expectedAddress}</code></p>
+            <p style="margin-top:10px;color:#888;">
+              If none matched, Zinc/Zerdinals might be using a custom derivation method.
+            </p>
+          </div>
+        `;
+        
+      } catch (error) {
+        output.innerHTML += `
+          <div class="result" style="border-left-color:#f00;">
+            <h3>❌ Fatal Error</h3>
+            <div style="color:#f00;">${error.message}</div>
+            <div class="value">${error.stack}</div>
+          </div>
+        `;
+      }
+    }
+  </script>
+</body>
+</html>

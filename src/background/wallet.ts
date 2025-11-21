@@ -46,12 +46,27 @@ export class WalletManager {
   }
 
   /**
-   * Imports an existing wallet from mnemonic
+   * Imports an existing wallet from mnemonic or private key
    */
-  async importWallet(mnemonic: string, password: string): Promise<{ address: string }> {
-    // Validate mnemonic
-    if (!bip39.validateMnemonic(mnemonic)) {
-      throw new Error('Invalid mnemonic phrase');
+  async importWallet(
+    data: { method: 'phrase' | 'privateKey'; mnemonic?: string; privateKey?: string },
+    password: string
+  ): Promise<{ address: string }> {
+    let mnemonic: string;
+    
+    if (data.method === 'phrase' && data.mnemonic) {
+      // Validate mnemonic (12 or 24 words)
+      if (!bip39.validateMnemonic(data.mnemonic)) {
+        throw new Error('Invalid mnemonic phrase');
+      }
+      mnemonic = data.mnemonic;
+    } else if (data.method === 'privateKey' && data.privateKey) {
+      // For private key import, we need to convert it to a mnemonic format
+      // In real implementation, you would derive from the private key
+      // For now, throw error as this requires WebZjs integration
+      throw new Error('Private key import requires WebZjs integration - coming soon!');
+    } else {
+      throw new Error('Invalid import data');
     }
     
     // Encrypt and store
