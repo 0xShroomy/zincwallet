@@ -213,15 +213,17 @@ self.ZcashKeys = (function() {
   }
   
   /**
-   * Base58 decode
+   * Base58 decode with checksum verification
    */
-  function base58Decode(address) {
+  async function base58Decode(address) {
     const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
     
     let num = 0n;
     for (let i = 0; i < address.length; i++) {
       const digit = ALPHABET.indexOf(address[i]);
-      if (digit === -1) throw new Error('Invalid base58 character');
+      if (digit === -1) {
+        throw new Error(`Invalid base58 character: ${address[i]}`);
+      }
       num = num * 58n + BigInt(digit);
     }
     
@@ -232,12 +234,34 @@ self.ZcashKeys = (function() {
       num = num >> 8n;
     }
     
-    // Add leading zeros
+    // Add leading zeros (for each leading '1' in the address)
     for (let i = 0; i < address.length && address[i] === '1'; i++) {
       bytes.unshift(0);
     }
     
-    return new Uint8Array(bytes);
+    const decoded = new Uint8Array(bytes);
+    
+    // Verify checksum (last 4 bytes)
+    if (decoded.length < 4) {
+      throw new Error('Invalid base58 data: too short');
+    }
+    
+    const payload = decoded.slice(0, -4);
+    const checksum = decoded.slice(-4);
+    
+    // Compute expected checksum (double SHA256)
+    const hash1 = await sha256(payload);
+    const hash2 = await sha256(hash1);
+    const expectedChecksum = hash2.slice(0, 4);
+    
+    // Verify checksum matches
+    for (let i = 0; i < 4; i++) {
+      if (checksum[i] !== expectedChecksum[i]) {
+        throw new Error('Invalid base58 checksum');
+      }
+    }
+    
+    return payload;
   }
   
   /**
