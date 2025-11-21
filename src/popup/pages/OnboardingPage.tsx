@@ -7,9 +7,11 @@ interface Props {
 
 export default function OnboardingPage({ onComplete }: Props) {
   const [mode, setMode] = useState<'select' | 'create' | 'import'>('select');
+  const [importMethod, setImportMethod] = useState<'phrase' | 'privateKey'>('phrase');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [mnemonic, setMnemonic] = useState('');
+  const [privateKey, setPrivateKey] = useState('');
   const [generatedMnemonic, setGeneratedMnemonic] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -56,8 +58,13 @@ export default function OnboardingPage({ onComplete }: Props) {
       return;
     }
 
-    if (!mnemonic.trim()) {
+    if (importMethod === 'phrase' && !mnemonic.trim()) {
       setError('Please enter your seed phrase');
+      return;
+    }
+
+    if (importMethod === 'privateKey' && !privateKey.trim()) {
+      setError('Please enter your private key');
       return;
     }
 
@@ -68,7 +75,12 @@ export default function OnboardingPage({ onComplete }: Props) {
       await browser.runtime.sendMessage({
         type: 'WALLET_ACTION',
         action: 'IMPORT_WALLET',
-        data: { mnemonic: mnemonic.trim(), password },
+        data: { 
+          method: importMethod,
+          mnemonic: importMethod === 'phrase' ? mnemonic.trim() : undefined,
+          privateKey: importMethod === 'privateKey' ? privateKey.trim() : undefined,
+          password 
+        },
       });
 
       onComplete();
@@ -83,6 +95,13 @@ export default function OnboardingPage({ onComplete }: Props) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900">
         <div className="card max-w-md w-full text-center">
+          <div className="flex justify-center mb-6">
+            <img 
+              src="/icons/ZYNCWALLETICON.png" 
+              alt="Zync Wallet Logo" 
+              className="w-20 h-20"
+            />
+          </div>
           <h1 className="text-3xl font-bold mb-2 text-white">Zync Wallet</h1>
           <p className="text-zinc-600 mb-8">Your gateway to Zcash inscriptions, ZRC-20 tokens, and NFTs</p>
           
@@ -216,16 +235,59 @@ export default function OnboardingPage({ onComplete }: Props) {
         )}
         
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-2">Seed Phrase (24 words)</label>
-            <textarea
-              value={mnemonic}
-              onChange={(e) => setMnemonic(e.target.value)}
-              className="input"
-              rows={4}
-              placeholder="Enter your 24-word seed phrase, separated by spaces"
-            />
+          {/* Import Method Selector */}
+          <div className="flex gap-2 border-b border-zinc-700 mb-4">
+            <button
+              onClick={() => setImportMethod('phrase')}
+              className={`flex-1 py-2 px-4 text-sm font-medium transition-colors ${
+                importMethod === 'phrase'
+                  ? 'text-amber-500 border-b-2 border-amber-500'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              Seed Phrase
+            </button>
+            <button
+              onClick={() => setImportMethod('privateKey')}
+              className={`flex-1 py-2 px-4 text-sm font-medium transition-colors ${
+                importMethod === 'privateKey'
+                  ? 'text-amber-500 border-b-2 border-amber-500'
+                  : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              Private Key
+            </button>
           </div>
+
+          {importMethod === 'phrase' ? (
+            <div>
+              <label className="block text-sm font-medium mb-2">Seed Phrase (12 or 24 words)</label>
+              <textarea
+                value={mnemonic}
+                onChange={(e) => setMnemonic(e.target.value)}
+                className="input"
+                rows={4}
+                placeholder="word1 word2 word3 ..."
+              />
+              <p className="text-xs text-zinc-500 mt-1">
+                Enter your 12 or 24-word seed phrase separated by spaces
+              </p>
+            </div>
+          ) : (
+            <div>
+              <label className="block text-sm font-medium mb-2">Private Key</label>
+              <textarea
+                value={privateKey}
+                onChange={(e) => setPrivateKey(e.target.value)}
+                className="input"
+                rows={3}
+                placeholder="L... or 0x..."
+              />
+              <p className="text-xs text-zinc-500 mt-1">
+                Supports WIF format (L...) or hex format (0x...)
+              </p>
+            </div>
+          )}
           
           <div>
             <label className="block text-sm font-medium mb-2">Password</label>

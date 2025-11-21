@@ -909,11 +909,6 @@ async function handleDeleteWallet(data) {
       throw new Error('Wallet not found');
     }
     
-    // Check if this is the last wallet
-    if (wallets.length === 1) {
-      throw new Error('Cannot delete your last wallet');
-    }
-    
     // Verify password
     const mnemonic = await decryptMnemonic(wallet.encryptedSeed, password);
     if (!mnemonic) {
@@ -921,8 +916,35 @@ async function handleDeleteWallet(data) {
     }
     
     const isDeletingActiveWallet = walletId === activeWalletId;
+    const isLastWallet = wallets.length === 1;
     
-    // If deleting active wallet, switch to another wallet first
+    // If deleting the last wallet, reset everything
+    if (isLastWallet) {
+      console.log('[Background] Deleting last wallet - resetting to uninitialized state');
+      
+      // Delete all wallets
+      await chrome.storage.local.remove(['wallets', 'activeWalletId']);
+      
+      // Clear session
+      await chrome.storage.session.clear();
+      
+      // Reset wallet state
+      walletState.isInitialized = false;
+      walletState.isLocked = true;
+      walletState.address = '';
+      walletState.balance = 0;
+      
+      console.log('[Background] All wallets deleted - wallet uninitialized');
+      
+      return {
+        success: true,
+        walletId,
+        lastWallet: true, // Signal to UI to redirect to welcome page
+        switched: false
+      };
+    }
+    
+    // If deleting active wallet (but not last), switch to another wallet first
     if (isDeletingActiveWallet) {
       // Find first wallet that isn't the one being deleted
       const nextWallet = wallets.find(w => w.id !== walletId);

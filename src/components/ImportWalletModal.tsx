@@ -190,12 +190,12 @@ export default function ImportWalletModal({ onClose, onSuccess }: Props) {
                     value={privateKey}
                     onChange={(e) => setPrivateKey(e.target.value)}
                     className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-amber-500 font-mono text-sm"
-                    placeholder="Enter your private key..."
+                    placeholder="L... or 0x..."
                     rows={3}
                     autoFocus
                   />
                   <p className="text-xs text-zinc-500 mt-1">
-                    Enter your WIF (Wallet Import Format) private key
+                    Supports WIF format (L...) or hex format (0x...)
                   </p>
                 </div>
               )}
