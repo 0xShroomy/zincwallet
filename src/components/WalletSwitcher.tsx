@@ -152,8 +152,8 @@ export default function WalletSwitcher({ onClose, onUpdate }: Props) {
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-        <div className="bg-zinc-darker border border-zinc-700 rounded-xl p-6 w-full max-w-md mx-4">
+      <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-6">
+        <div className="bg-zinc-darker border border-zinc-700 rounded-xl p-6 w-full max-w-md">
           <div className="text-center text-zinc-400">Loading wallets...</div>
         </div>
       </div>
@@ -164,8 +164,8 @@ export default function WalletSwitcher({ onClose, onUpdate }: Props) {
   if (switchingToId) {
     const wallet = wallets.find(w => w.id === switchingToId);
     return (
-      <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-        <div className="bg-zinc-darker border border-zinc-700 rounded-xl p-6 w-full max-w-md mx-4">
+      <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-6">
+        <div className="bg-zinc-darker border border-zinc-700 rounded-xl p-6 w-full max-w-md">
           <h2 className="text-lg font-semibold text-white mb-4">Switch to {wallet?.name}</h2>
           <form onSubmit={handleSwitchWallet} className="space-y-4">
             <div>
@@ -216,8 +216,8 @@ export default function WalletSwitcher({ onClose, onUpdate }: Props) {
 
   // Wallet list
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-      <div className="bg-zinc-darker border border-zinc-700 rounded-xl p-6 w-full max-w-md mx-4 max-h-[80vh] flex flex-col">
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-6">
+      <div className="bg-zinc-darker border border-zinc-700 rounded-xl p-6 w-full max-w-md max-h-[80vh] flex flex-col">
         <h2 className="text-lg font-semibold text-white mb-4">Your Wallets</h2>
         
         <div className="flex-1 overflow-y-auto space-y-2 mb-4">
@@ -345,8 +345,8 @@ export default function WalletSwitcher({ onClose, onUpdate }: Props) {
       )}
 
       {editingWalletId && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-zinc-darker border border-zinc-700 rounded-xl p-6 w-full max-w-md mx-4">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-6">
+          <div className="bg-zinc-darker border border-zinc-700 rounded-xl p-6 w-full max-w-md">
             <h2 className="text-lg font-semibold text-white mb-4">Rename Wallet</h2>
             <form onSubmit={handleRenameWallet} className="space-y-4">
               <div>
@@ -389,8 +389,8 @@ export default function WalletSwitcher({ onClose, onUpdate }: Props) {
       )}
 
       {deletingWalletId && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-zinc-darker border border-zinc-700 rounded-xl p-6 w-full max-w-md mx-4">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-6">
+          <div className="bg-zinc-darker border border-zinc-700 rounded-xl p-6 w-full max-w-md">
             <h2 className="text-lg font-semibold text-white mb-4">Delete Wallet</h2>
             <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-3 mb-4">
               <p className="text-sm text-red-400">
