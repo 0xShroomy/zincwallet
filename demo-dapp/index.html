@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zync Wallet Test dApp</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #0f0f1e 100%);
+      color: #fff;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+    .container { max-width: 800px; margin: 0 auto; }
+    h1 { font-size: 2.5rem; margin-bottom: 0.5rem; color: #f59e0b; }
+    .subtitle { color: #9ca3af; margin-bottom: 2rem; }
+    .status {
+      background: #1f2937;
+      border: 1px solid #374151;
+      border-radius: 0.5rem;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .status-item { display: flex; justify-content: space-between; padding: 0.5rem 0; }
+    .status-label { color: #9ca3af; }
+    .status-value { font-family: 'Courier New', monospace; color: #f59e0b; }
+    .actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+    button {
+      background: #f59e0b;
+      color: #000;
+      border: none;
+      padding: 1rem;
+      border-radius: 0.5rem;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    button:hover { background: #d97706; transform: translateY(-2px); }
+    button:disabled { background: #374151; color: #6b7280; cursor: not-allowed; transform: none; }
+    .output {
+      background: #111827;
+      border: 1px solid #374151;
+      border-radius: 0.5rem;
+      padding: 1rem;
+      font-family: 'Courier New', monospace;
+      font-size: 0.875rem;
+      color: #10b981;
+      min-height: 200px;
+      max-height: 400px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .error { color: #ef4444; }
+    .success { color: #10b981; }
+    .info { color: #3b82f6; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>⚡ Zync Wallet Test dApp</h1>
+    <p class="subtitle">Test all dApp integration features</p>
+    
+    <div class="status" id="status">
+      <div class="status-item">
+        <span class="status-label">Provider:</span>
+        <span class="status-value" id="provider-status">Checking...</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">Connected:</span>
+        <span class="status-value" id="connected-status">No</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">Address:</span>
+        <span class="status-value" id="address">-</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">Balance:</span>
+        <span class="status-value" id="balance">-</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">Network:</span>
+        <span class="status-value" id="network">-</span>
+      </div>
+    </div>
+    
+    <div class="actions">
+      <button onclick="connect()">Connect Wallet</button>
+      <button onclick="disconnect()">Disconnect</button>
+      <button onclick="getBalance()">Get Balance</button>
+      <button onclick="sendZec()">Send ZEC</button>
+      <button onclick="deployToken()">Deploy ZRC-20</button>
+      <button onclick="mintToken()">Mint ZRC-20</button>
+      <button onclick="transferToken()">Transfer ZRC-20</button>
+      <button onclick="createInscription()">Create Inscription</button>
+    </div>
+    
+    <div class="output" id="output">Waiting for action...</div>
+  </div>
+
+  <script>
+    let isConnected = false;
+    let currentAddress = null;
+    
+    // Check for provider on load
+    window.addEventListener('zyncwallet#initialized', () => {
+      log('✅ Zync Wallet provider detected!', 'success');
+      updateStatus();
+    });
+    
+    // Check immediately if already loaded
+    setTimeout(() => {
+      if (window.zyncwallet) {
+        log('✅ Zync Wallet provider detected!', 'success');
+        updateStatus();
+      } else {
+        log('❌ Zync Wallet not detected. Please install the extension.', 'error');
+        document.getElementById('provider-status').textContent = 'Not Found';
+      }
+    }, 100);
+    
+    function log(message, type = 'info') {
+      const output = document.getElementById('output');
+      const timestamp = new Date().toLocaleTimeString();
+      const className = type === 'error' ? 'error' : type === 'success' ? 'success' : 'info';
+      output.innerHTML += `<span class="${className}">[${timestamp}] ${message}</span>\n`;
+      output.scrollTop = output.scrollHeight;
+      console.log(message);
+    }
+    
+    function updateStatus() {
+      document.getElementById('provider-status').textContent = window.zyncwallet ? 'Found' : 'Not Found';
+      document.getElementById('connected-status').textContent = isConnected ? 'Yes' : 'No';
+      document.getElementById('address').textContent = currentAddress || '-';
+    }
+    
+    async function connect() {
+      try {
+        log('🔌 Requesting connection...', 'info');
+        const result = await window.zyncwallet.connect();
+        isConnected = true;
+        currentAddress = result.address;
+        updateStatus();
+        log(`✅ Connected! Address: ${result.address}`, 'success');
+        log(`Network: ${result.network}`, 'info');
+        document.getElementById('network').textContent = result.network;
+      } catch (error) {
+        log(`❌ Connection failed: ${error.message}`, 'error');
+      }
+    }
+    
+    async function disconnect() {
+      try {
+        log('🔌 Disconnecting...', 'info');
+        await window.zyncwallet.disconnect();
+        isConnected = false;
+        currentAddress = null;
+        updateStatus();
+        document.getElementById('balance').textContent = '-';
+        document.getElementById('network').textContent = '-';
+        log('✅ Disconnected', 'success');
+      } catch (error) {
+        log(`❌ Disconnect failed: ${error.message}`, 'error');
+      }
+    }
+    
+    async function getBalance() {
+      try {
+        log('💰 Fetching balance...', 'info');
+        const result = await window.zyncwallet.getBalance();
+        log(`✅ Balance: ${result.balanceZec} ZEC (${result.balance} zatoshis)`, 'success');
+        document.getElementById('balance').textContent = `${result.balanceZec} ZEC`;
+      } catch (error) {
+        log(`❌ Get balance failed: ${error.message}`, 'error');
+      }
+    }
+    
+    async function sendZec() {
+      try {
+        const to = prompt('Enter recipient address:');
+        const amount = prompt('Enter amount (ZEC):');
+        if (!to || !amount) return;
+        
+        log(`💸 Sending ${amount} ZEC to ${to}...`, 'info');
+        const result = await window.zyncwallet.sendZec({ to, amount });
+        log(`✅ Transaction sent! TXID: ${result.txid}`, 'success');
+      } catch (error) {
+        log(`❌ Send failed: ${error.message}`, 'error');
+      }
+    }
+    
+    async function deployToken() {
+      try {
+        const tick = prompt('Enter token ticker (e.g., TEST):');
+        const max = prompt('Enter max supply:');
+        const limit = prompt('Enter mint limit:');
+        if (!tick || !max || !limit) return;
+        
+        log(`🪙 Deploying ZRC-20 token: ${tick}...`, 'info');
+        const result = await window.zyncwallet.deployZrc20({
+          tick,
+          max,
+          limit,
+          decimals: 8
+        });
+        log(`✅ Token deployed! TXID: ${result.txid}`, 'success');
+      } catch (error) {
+        log(`❌ Deploy failed: ${error.message}`, 'error');
+      }
+    }
+    
+    async function mintToken() {
+      try {
+        const deployTxid = prompt('Enter deploy TXID:');
+        const amount = prompt('Enter amount to mint:');
+        if (!deployTxid || !amount) return;
+        
+        log(`🪙 Minting ${amount} tokens...`, 'info');
+        const result = await window.zyncwallet.mintZrc20({ deployTxid, amount });
+        log(`✅ Tokens minted! TXID: ${result.txid}`, 'success');
+      } catch (error) {
+        log(`❌ Mint failed: ${error.message}`, 'error');
+      }
+    }
+    
+    async function transferToken() {
+      try {
+        const deployTxid = prompt('Enter deploy TXID:');
+        const to = prompt('Enter recipient address:');
+        const amount = prompt('Enter amount:');
+        if (!deployTxid || !to || !amount) return;
+        
+        log(`🪙 Transferring ${amount} tokens...`, 'info');
+        const result = await window.zyncwallet.transferZrc20({ deployTxid, amount, to });
+        log(`✅ Tokens transferred! TXID: ${result.txid}`, 'success');
+      } catch (error) {
+        log(`❌ Transfer failed: ${error.message}`, 'error');
+      }
+    }
+    
+    async function createInscription() {
+      try {
+        const content = prompt('Enter inscription content:');
+        if (!content) return;
+        
+        log(`📝 Creating inscription...`, 'info');
+        const result = await window.zyncwallet.inscribe({
+          contentType: 'text/plain',
+          content
+        });
+        log(`✅ Inscription created! TXID: ${result.txid}`, 'success');
+      } catch (error) {
+        log(`❌ Inscribe failed: ${error.message}`, 'error');
+      }
+    }
+  </script>
+</body>
+</html>

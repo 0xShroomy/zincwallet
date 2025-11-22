@@ -216,8 +216,8 @@ export default function WalletSwitcher({ onClose, onUpdate }: Props) {
 
   // Wallet list
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-6">
-      <div className="bg-zinc-darker border border-zinc-700 rounded-xl p-6 w-full max-w-md max-h-[80vh] flex flex-col">
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 px-4">
+      <div className="bg-zinc-darker border border-zinc-700 rounded-xl p-4 w-full max-w-md max-h-[80vh] flex flex-col">
         <h2 className="text-lg font-semibold text-white mb-4">Your Wallets</h2>
         
         <div className="flex-1 overflow-y-auto space-y-2 mb-4">

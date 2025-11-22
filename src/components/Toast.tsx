@@ -41,8 +41,8 @@ export default function Toast({ message, type, onClose, duration = 4000 }: Props
   };
 
   return (
-    <div className="fixed top-4 right-4 z-50 animate-slide-in">
-      <div className={`border rounded-lg p-4 shadow-lg max-w-sm ${colors[type]}`}>
+    <div className="fixed bottom-0 left-0 right-0 z-50 animate-slide-up">
+      <div className={`border-t border-l-0 border-r-0 border-b-0 rounded-t-lg p-4 shadow-lg ${colors[type]}`}>
         <div className="flex items-start gap-3">
           {icons[type]}
           <div className="flex-1">

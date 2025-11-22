@@ -60,7 +60,9 @@ export default async function handler(req, res) {
       throw new Error('BLOCKCHAIR_API_KEY not configured');
     }
 
-    const apiUrl = `https://api.blockchair.com/zcash/dashboards/address/${address}?key=${blockchairKey}&limit=${limit}`;
+    // Blockchair API - Use dashboards endpoint with calls
+    // This returns full transaction details including timestamps
+    const apiUrl = `https://api.blockchair.com/zcash/dashboards/address/${address}?key=${blockchairKey}&transaction_details=true&limit=${limit}`;
     
     console.log(`[Transactions] Fetching from Blockchair for ${address}`);
     
@@ -85,26 +87,85 @@ export default async function handler(req, res) {
       throw new Error('Invalid Blockchair response');
     }
 
-    // Transform to our format
-    const transactions = (addressData.transactions || []).map(txid => {
-      // Find transaction details in UTXO data
-      const txDetails = addressData.utxo?.find(u => u.transaction_hash === txid) || {};
-      
-      return {
-        txid: txid,
-        type: txDetails.value > 0 ? 'received' : 'sent',
-        amount: Math.abs(txDetails.value || 0),
-        timestamp: txDetails.time ? new Date(txDetails.time).getTime() / 1000 : Date.now() / 1000,
-        confirmations: txDetails.block_id ? (data.context?.state || 0) - txDetails.block_id : 0,
-        blockId: txDetails.block_id
-      };
+    const currentBlockHeight = data.context?.state || 0;
+    const transactions_details = data.data?.transactions || {};
+    
+    console.log('[Transactions] Full response structure:', {
+      hasData: !!data.data,
+      hasAddress: !!addressData,
+      addressKeys: Object.keys(addressData || {}),
+      txArray: addressData.transactions,
+      txDetailsKeys: Object.keys(transactions_details),
+      contextState: currentBlockHeight
     });
+    
+    // If no transactions, return empty but log it
+    if (!addressData.transactions || addressData.transactions.length === 0) {
+      console.log('[Transactions] No transactions found in address data');
+    }
 
-    console.log(`[Transactions] ✓ Fetched ${transactions.length} transactions`);
+    // Transform to our format
+    // Blockchair returns transactions as objects with all data included
+    const transactions = (addressData.transactions || []).map((tx, index) => {
+      console.log(`[Transactions] Processing tx ${index}:`, typeof tx, tx);
+      
+      // Check if tx is an object (new format) or string (old format)
+      if (typeof tx === 'string') {
+        // Old format: just txid string
+        // Try to find in UTXOs first (for received funds)
+        const txUtxos = (addressData.utxo || []).filter(u => u.transaction_hash === tx);
+        
+        if (txUtxos.length > 0) {
+          // Found in UTXOs - this is received funds
+          const firstUtxo = txUtxos[0];
+          const balanceChange = txUtxos.reduce((sum, u) => sum + (u.value || 0), 0);
+          
+          return {
+            txid: tx,
+            type: 'received',
+            amount: Math.abs(balanceChange),
+            timestamp: firstUtxo.time || 0,
+            confirmations: firstUtxo.block_id ? Math.max(0, currentBlockHeight - firstUtxo.block_id) : 0,
+            blockId: firstUtxo.block_id
+          };
+        } else {
+          // Not in UTXOs - could be spent or we need to use transactions endpoint
+          // For now, skip transactions without UTXO data
+          console.log(`[Transactions] Skipping tx ${tx.slice(0,8)} - no UTXO data`);
+          return null;
+        }
+      } else {
+        // New format: tx is an object with all data
+        const timestamp = tx.time ? Math.floor(new Date(tx.time).getTime() / 1000) : 0;
+        const balanceChange = tx.balance_change || 0;
+        
+        return {
+          txid: tx.hash,
+          type: balanceChange > 0 ? 'received' : 'sent',
+          amount: Math.abs(balanceChange),
+          timestamp: timestamp,
+          confirmations: tx.block_id ? Math.max(0, currentBlockHeight - tx.block_id) : 0,
+          blockId: tx.block_id
+        };
+      }
+    });
+    
+    console.log('[Transactions] Before filter:', transactions.map(tx => tx ? ({
+      txid: tx.txid?.slice(0, 8),
+      timestamp: tx.timestamp,
+      amount: tx.amount,
+      willPass: tx.timestamp > 0 && tx.amount > 0
+    }) : null));
+    
+    const filteredTransactions = transactions
+      .filter(tx => tx !== null)  // Remove nulls first
+      .filter(tx => tx.timestamp > 0 && tx.amount > 0);  // Then filter invalid
+
+    console.log(`[Transactions] ✓ Fetched ${filteredTransactions.length} transactions`);
 
     const result = {
       success: true,
-      transactions: transactions,
+      transactions: filteredTransactions,
       source: 'blockchair'
     };
 

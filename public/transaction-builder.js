@@ -82,12 +82,13 @@ function selectUtxos(availableUtxos, inscription) {
   // Calculate required amounts
   const treasuryAmount = inscription.treasuryAmount || 0;
   const transferAmount = inscription.transferAmount || 0;
+  const mintPayment = inscription.mintPrice ? Math.floor(inscription.mintPrice * 100000000) : 0; // Convert ZEC to zatoshis
   
   // Estimate transaction size
   const estimatedSize = estimateTransactionSize(1, inscription); // Start with 1 input
   const estimatedFee = Math.max(MIN_FEE, Math.ceil(estimatedSize * DEFAULT_FEE_RATE / 1000));
   
-  const requiredAmount = treasuryAmount + transferAmount + estimatedFee;
+  const requiredAmount = treasuryAmount + transferAmount + mintPayment + estimatedFee;
   
   // Select UTXOs
   const selected = [];
@@ -100,7 +101,7 @@ function selectUtxos(availableUtxos, inscription) {
     // Recalculate fee with actual input count
     const actualSize = estimateTransactionSize(selected.length, inscription);
     const actualFee = Math.max(MIN_FEE, Math.ceil(actualSize * DEFAULT_FEE_RATE / 1000));
-    const actualRequired = treasuryAmount + transferAmount + actualFee;
+    const actualRequired = treasuryAmount + transferAmount + mintPayment + actualFee;
     
     // Check if we have enough
     if (totalInput >= actualRequired) {
@@ -155,6 +156,12 @@ function estimateTransactionSize(inputCount, inscription) {
     outputCount++;
   }
   
+  // Mint payment output
+  if (inscription.mintPrice && inscription.mintRecipient) {
+    size += 34; // P2PKH output
+    outputCount++;
+  }
+  
   // Transfer output (for ZRC-20 transfers)
   if (inscription.transferAmount > 0) {
     size += 34; // P2PKH output
@@ -205,6 +212,17 @@ async function buildZincTransaction(params) {
   // Add treasury output
   if (inscription.treasuryAmount > 0) {
     tx.addOutput(inscription.treasuryAddress, inscription.treasuryAmount);
+  }
+  
+  // Add mint payment output (to deployer)
+  if (inscription.mintPrice && inscription.mintRecipient) {
+    const mintPaymentZatoshis = Math.floor(inscription.mintPrice * 100000000);
+    tx.addOutput(inscription.mintRecipient, mintPaymentZatoshis);
+    console.log('[TransactionBuilder] Adding mint payment:', {
+      recipient: inscription.mintRecipient,
+      amount: inscription.mintPrice,
+      zatoshis: mintPaymentZatoshis
+    });
   }
   
   // Add transfer output (for ZRC-20 transfers)

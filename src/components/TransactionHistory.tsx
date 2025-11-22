@@ -12,9 +12,11 @@ interface Transaction {
 
 interface Props {
   walletAddress: string;
+  isRefreshing?: boolean;
+  network?: string;
 }
 
-export default function TransactionHistory({ walletAddress }: Props) {
+export default function TransactionHistory({ walletAddress, isRefreshing, network = 'mainnet' }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -22,6 +24,13 @@ export default function TransactionHistory({ walletAddress }: Props) {
   useEffect(() => {
     loadTransactions();
   }, [walletAddress]);
+
+  // Reload when isRefreshing changes
+  useEffect(() => {
+    if (isRefreshing) {
+      loadTransactions();
+    }
+  }, [isRefreshing]);
 
   async function loadTransactions() {
     setLoading(true);
@@ -51,6 +60,11 @@ export default function TransactionHistory({ walletAddress }: Props) {
   }
 
   function formatDate(timestamp: number): string {
+    // Handle missing or invalid timestamp
+    if (!timestamp || timestamp === 0) {
+      return 'Recent';
+    }
+    
     const date = new Date(timestamp * 1000);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
@@ -58,7 +72,9 @@ export default function TransactionHistory({ walletAddress }: Props) {
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffMs / 86400000);
 
-    if (diffMins < 60) {
+    if (diffMins < 1) {
+      return 'Just now';
+    } else if (diffMins < 60) {
       return `${diffMins}m ago`;
     } else if (diffHours < 24) {
       return `${diffHours}h ago`;
@@ -74,7 +90,8 @@ export default function TransactionHistory({ walletAddress }: Props) {
   }
 
   function openExplorer(txid: string) {
-    const explorerUrl = `https://explorer.zcha.in/transactions/${txid}`;
+    const networkPrefix = network?.toLowerCase() === 'testnet' ? 'testnet' : 'mainnet';
+    const explorerUrl = `https://${networkPrefix}.zcashexplorer.app/transactions/${txid}`;
     window.open(explorerUrl, '_blank');
   }
 
@@ -130,14 +147,8 @@ export default function TransactionHistory({ walletAddress }: Props) {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between mb-4">
+      <div className="mb-4">
         <h3 className="text-sm font-semibold text-white">Recent Transactions</h3>
-        <button
-          onClick={loadTransactions}
-          className="text-xs text-amber-500 hover:text-amber-400"
-        >
-          Refresh
-        </button>
       </div>
 
       <div className="space-y-2">

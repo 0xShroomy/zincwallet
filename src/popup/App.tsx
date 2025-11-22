@@ -4,20 +4,30 @@ import type { WalletState } from '@/types/wallet';
 import OnboardingPage from './pages/OnboardingPage';
 import UnlockPage from './pages/UnlockPage';
 import DashboardPage from './pages/DashboardPage';
+import ConnectApprovalPage from './pages/ConnectApprovalPage';
+import TransactionApprovalPage from './pages/TransactionApprovalPage';
 
 function App() {
   const [walletState, setWalletState] = useState<WalletState | null>(null);
   const [loading, setLoading] = useState(true);
+  const [pendingApproval, setPendingApproval] = useState<any>(null);
 
   useEffect(() => {
     loadWalletState();
+    checkPendingApproval();
     
-    // Listen for storage changes (when background updates balance)
+    // Listen for storage changes (when background updates balance or approvals)
     const handleStorageChange = (changes: any) => {
       // If wallet state changes in storage, reload
       if (changes.walletState || changes.wallets) {
         console.log('[App] Storage changed, reloading state...');
         loadWalletState();
+      }
+      
+      // If pending approval changes, check for it
+      if (changes.pendingApproval) {
+        console.log('[App] Pending approval changed');
+        checkPendingApproval();
       }
     };
     
@@ -27,6 +37,18 @@ function App() {
       browser.storage.onChanged.removeListener(handleStorageChange);
     };
   }, []);
+
+  async function checkPendingApproval() {
+    try {
+      const result = await browser.storage.local.get('pendingApproval');
+      if (result.pendingApproval) {
+        console.log('[App] Pending approval found:', result.pendingApproval.type);
+        setPendingApproval(result.pendingApproval);
+      }
+    } catch (error) {
+      console.error('[App] Error checking pending approval:', error);
+    }
+  }
 
   async function loadWalletState() {
     try {
@@ -105,6 +127,17 @@ function App() {
 
   function handleWalletUpdate() {
     loadWalletState();
+    checkPendingApproval();
+  }
+
+  // Show approval pages if there's a pending approval
+  if (pendingApproval) {
+    if (pendingApproval.type === 'connect') {
+      return <ConnectApprovalPage />;
+    }
+    if (pendingApproval.type === 'transaction') {
+      return <TransactionApprovalPage />;
+    }
   }
 
   if (loading) {

@@ -17,6 +17,7 @@ importScripts('lightwalletd-client.js');
 importScripts('zcash-transaction.js');
 importScripts('inscription-builder.js'); // Zinc & Zerdinals inscription support
 importScripts('transaction-builder.js'); // Transaction building with inscription support
+importScripts('permissions.js'); // dApp permission system
 
 // ============================================================================
 // CRYPTO UTILITIES
@@ -419,6 +420,70 @@ async function handleUnlockWallet(data) {
     handleRefreshBalance().catch(err => {
       console.warn('[Background] Auto-refresh balance failed:', err);
     });
+    
+    // Check for pending dApp request after unlock
+    const { pendingDappRequest } = await chrome.storage.local.get('pendingDappRequest');
+    if (pendingDappRequest) {
+      console.log('[Background] Processing pending dApp request after unlock:', pendingDappRequest.type);
+      
+      // Process the request after a short delay to let UI update
+      setTimeout(async () => {
+        try {
+          if (pendingDappRequest.type === 'connect' && pendingDappRequest.requestId) {
+            // Trigger the connection approval flow
+            const approved = await requestConnectionApproval(pendingDappRequest.origin, pendingDappRequest.metadata);
+            
+            const pending = pendingDappConnections.get(pendingDappRequest.requestId);
+            if (pending) {
+              if (approved) {
+                console.log('[Background] Connection approved after unlock');
+                // Grant permission
+                const permission = await self.PermissionManager.grantPermission(
+                  pendingDappRequest.origin,
+                  walletState.address,
+                  pendingDappRequest.metadata
+                );
+                
+                // Store toast notification for dashboard
+                await chrome.storage.local.set({
+                  pendingToast: {
+                    message: 'Wallet connected',
+                    type: 'success',
+                    timestamp: Date.now()
+                  }
+                });
+                
+                // Resolve the original promise
+                pending.resolve({
+                  address: walletState.address,
+                  network: walletState.network,
+                  publicKey: null,
+                  connected: true,
+                  permissions: permission.permissions
+                });
+              } else {
+                // Reject the original promise
+                pending.reject(new Error('User rejected connection request'));
+              }
+              
+              pendingDappConnections.delete(pendingDappRequest.requestId);
+            }
+          }
+          // Clear the pending request
+          await chrome.storage.local.remove('pendingDappRequest');
+        } catch (error) {
+          console.error('[Background] Error processing pending dApp request:', error);
+          // Reject any pending connection
+          if (pendingDappRequest.requestId) {
+            const pending = pendingDappConnections.get(pendingDappRequest.requestId);
+            if (pending) {
+              pending.reject(error);
+              pendingDappConnections.delete(pendingDappRequest.requestId);
+            }
+          }
+        }
+      }, 500);
+    }
 
     return {
       success: true,
@@ -604,6 +669,16 @@ async function handleSwitchNetwork(data) {
     }
     
     console.log('[Background] Network switched successfully');
+    
+    // Store toast notification for dashboard
+    const networkName = network.charAt(0).toUpperCase() + network.slice(1);
+    await chrome.storage.local.set({
+      pendingToast: {
+        message: `Switched to ${networkName}`,
+        type: 'success',
+        timestamp: Date.now()
+      }
+    });
     
     // Refresh balance on the new network if wallet is unlocked
     if (!walletState.isLocked && walletState.address) {
@@ -877,9 +952,9 @@ async function handleGetInscriptions(data) {
  */
 async function handleDeployZrc20(data) {
   try {
-    const { tick, max, limit, decimals = 8 } = data;
+    const { tick, max, limit, decimals = 8, mintPrice = 0 } = data;
     
-    console.log('[Background] Deploying ZRC-20:', { tick, max, limit, decimals });
+    console.log('[Background] Deploying ZRC-20:', { tick, max, limit, decimals, mintPrice });
     
     // Validate wallet is unlocked
     if (walletState.isLocked || !walletState.address) {
@@ -900,7 +975,9 @@ async function handleDeployZrc20(data) {
       tick,
       max,
       limit,
-      decimals
+      decimals,
+      mintPrice,
+      deployerAddress: walletState.address // Save deployer's address for mint payments
     });
     
     // Build transaction
@@ -934,6 +1011,18 @@ async function handleDeployZrc20(data) {
 
 /**
  * Mint ZRC-20 Tokens (Zinc Protocol)
+ * 
+ * NOTE: Requires indexer to return deploy info including:
+ * - mintPrice (ZEC amount)
+ * - deployerAddress (recipient of mint payment)
+ * 
+ * Expected API response format:
+ * {
+ *   tick: "ZYNC",
+ *   mintPrice: 0.01,
+ *   deployerAddress: "t1...",
+ *   ... other deploy info
+ * }
  */
 async function handleMintZrc20(data) {
   try {
@@ -952,9 +1041,17 @@ async function handleMintZrc20(data) {
     
     const privateKey = await getPrivateKeyForAddress(walletState.address);
     
+    // TODO: Fetch deploy info from indexer to get mint price and deployer address
+    // const deployInfo = await fetchDeployInfo(deployTxid);
+    // For now, mint payment data will be empty until indexer supports it
+    const mintPrice = 0; // Will come from deployInfo.mintPrice
+    const mintRecipient = null; // Will come from deployInfo.deployerAddress
+    
     const inscription = self.InscriptionBuilder.buildZincInscription('mintZrc20', {
       deployTxid,
-      amount
+      amount,
+      mintPrice,
+      mintRecipient
     });
     
     const tx = await self.TransactionBuilder.buildInscriptionTransaction({
@@ -1542,7 +1639,7 @@ async function handleInscription(data) {
     
     // Build inscription data based on type
     let inscriptionData;
-    if (type === 'zrc20-deploy') {
+    if (type === 'zrc20-deploy' || type === 'zerdinals-zrc20-deploy') {
       // ZRC-20 Deploy: {"p":"zrc-20","op":"deploy","tick":"TOKEN","max":"21000000","lim":"1000"}
       inscriptionData = JSON.stringify({
         p: 'zrc-20',
@@ -1551,7 +1648,7 @@ async function handleInscription(data) {
         max: payload.max,
         lim: payload.lim || payload.max
       });
-    } else if (type === 'zrc20-mint') {
+    } else if (type === 'zrc20-mint' || type === 'zerdinals-zrc20-mint') {
       // ZRC-20 Mint: {"p":"zrc-20","op":"mint","tick":"TOKEN","amt":"1000"}
       inscriptionData = JSON.stringify({
         p: 'zrc-20',
@@ -1584,6 +1681,15 @@ async function handleInscription(data) {
         collection: payload.collection,
         metadata: payload.metadata || '{}'
       });
+    } else if (type === 'zerdinals-text') {
+      // Plain text inscription
+      inscriptionData = payload.text || '';
+    } else if (type === 'zerdinals-json') {
+      // JSON inscription
+      inscriptionData = payload.json || '{}';
+    } else if (type === 'zerdinals-image') {
+      // Image inscription (base64)
+      inscriptionData = payload.imageData || '';
     } else {
       throw new Error('Unknown inscription type');
     }
@@ -1630,6 +1736,15 @@ async function handleInscription(data) {
     
     console.log('[Background] Inscription broadcast successful! TXID:', txid);
     
+    // Store success notification
+    await chrome.storage.local.set({
+      pendingToast: {
+        message: 'Transaction successful',
+        type: 'success',
+        timestamp: Date.now()
+      }
+    });
+    
     // Refresh balance
     setTimeout(() => handleRefreshBalance(), 2000);
     
@@ -1640,6 +1755,14 @@ async function handleInscription(data) {
     };
     
   } catch (error) {
+    // Store error notification
+    await chrome.storage.local.set({
+      pendingToast: {
+        message: 'Transaction failed',
+        type: 'error',
+        timestamp: Date.now()
+      }
+    });
     console.error('[Background] INSCRIPTION failed:', error);
     return {
       success: false,
@@ -1735,17 +1858,536 @@ async function handleSendZec(data) {
     
     console.log('[Background] Transaction broadcast! TXID:', txid);
     
+    // Store success notification
+    await chrome.storage.local.set({
+      pendingToast: {
+        message: 'Transaction successful',
+        type: 'success',
+        timestamp: Date.now()
+      }
+    });
+    
     return {
       success: true,
       txid
     };
   } catch (error) {
     console.error('[Background] Send ZEC failed:', error);
+    
+    // Store error notification
+    await chrome.storage.local.set({
+      pendingToast: {
+        message: 'Transaction failed',
+        type: 'error',
+        timestamp: Date.now()
+      }
+    });
+    
     return {
       success: false,
       error: error.message
     };
   }
+}
+
+// ============================================================================
+// DAPP REQUEST HANDLERS
+// ============================================================================
+
+/**
+ * Handle dApp connection request
+ */
+async function handleDappConnect(origin, metadata) {
+  console.log('[dApp] Connect request from:', origin);
+  
+  // Check if wallet is unlocked - if not, wait for unlock and approval
+  if (walletState.isLocked || !walletState.address) {
+    console.log('[dApp] Wallet is locked, will wait for unlock and approval...');
+    
+    // Create unique request ID
+    const requestId = `connect_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Store the pending connection request with promise resolvers
+    const connectionPromise = new Promise((resolve, reject) => {
+      pendingDappConnections.set(requestId, { resolve, reject, origin, metadata });
+      
+      // Timeout after 5 minutes
+      setTimeout(() => {
+        if (pendingDappConnections.has(requestId)) {
+          pendingDappConnections.delete(requestId);
+          reject(new Error('Connection request timeout'));
+        }
+      }, 300000);
+    });
+    
+    // Store request ID in storage for unlock handler
+    await chrome.storage.local.set({
+      pendingDappRequest: {
+        type: 'connect',
+        requestId,
+        origin,
+        metadata,
+        timestamp: Date.now()
+      }
+    });
+    
+    // Open extension popup to unlock
+    try {
+      await chrome.action.openPopup();
+    } catch (error) {
+      console.warn('[dApp] Could not open popup automatically:', error);
+    }
+    
+    // Wait for unlock and approval to complete
+    return connectionPromise;
+  }
+  
+  // Check if already connected
+  const isConnected = await self.PermissionManager.isConnected(origin);
+  if (isConnected) {
+    const permission = await self.PermissionManager.getPermission(origin);
+    console.log('[dApp] Already connected:', origin);
+    return {
+      address: walletState.address,
+      network: walletState.network,
+      publicKey: null, // TODO: Add if needed
+      connected: true,
+      permissions: permission.permissions
+    };
+  }
+  
+  // Request user approval
+  const approved = await requestConnectionApproval(origin, metadata);
+  
+  if (!approved) {
+    throw new Error('User rejected connection request');
+  }
+  
+  // Grant permission
+  await self.PermissionManager.grantPermission(origin, walletState.address, metadata);
+  
+  console.log('[dApp] Connection granted:', origin);
+  
+  // Store toast notification for dashboard
+  await chrome.storage.local.set({
+    pendingToast: {
+      message: 'Wallet connected',
+      type: 'success',
+      timestamp: Date.now()
+    }
+  });
+  
+  return {
+    address: walletState.address,
+    network: walletState.network,
+    publicKey: null,
+    connected: true
+  };
+}
+
+/**
+ * Handle dApp disconnection request
+ */
+async function handleDappDisconnect(origin) {
+  console.log('[dApp] Disconnect request from:', origin);
+  
+  await self.PermissionManager.revokePermission(origin);
+  
+  // Store toast notification for dashboard
+  await chrome.storage.local.set({
+    pendingToast: {
+      message: 'Wallet disconnected',
+      type: 'error',
+      timestamp: Date.now()
+    }
+  });
+  
+  return { disconnected: true };
+}
+
+/**
+ * Handle get address request
+ */
+async function handleDappGetAddress(origin) {
+  const hasPermission = await self.PermissionManager.hasPermission(origin, 'getAddress');
+  
+  if (!hasPermission) {
+    throw new Error('Permission denied. Call connect() first.');
+  }
+  
+  if (walletState.isLocked || !walletState.address) {
+    throw new Error('Wallet is locked');
+  }
+  
+  return { address: walletState.address };
+}
+
+/**
+ * Handle get public key request
+ */
+async function handleDappGetPublicKey(origin) {
+  const hasPermission = await self.PermissionManager.hasPermission(origin, 'getPublicKey');
+  
+  if (!hasPermission) {
+    throw new Error('Permission denied. Call connect() first.');
+  }
+  
+  if (walletState.isLocked || !walletState.address) {
+    throw new Error('Wallet is locked');
+  }
+  
+  // TODO: Implement public key derivation if needed
+  return { publicKey: null };
+}
+
+/**
+ * Handle get network request
+ */
+async function handleDappGetNetwork(origin) {
+  const hasPermission = await self.PermissionManager.hasPermission(origin, 'getNetwork');
+  
+  if (!hasPermission) {
+    throw new Error('Permission denied. Call connect() first.');
+  }
+  
+  return { network: walletState.network };
+}
+
+/**
+ * Handle get balance request
+ */
+async function handleDappGetBalance(origin) {
+  const hasPermission = await self.PermissionManager.hasPermission(origin, 'getBalance');
+  
+  if (!hasPermission) {
+    throw new Error('Permission denied. Call connect() first.');
+  }
+  
+  if (walletState.isLocked || !walletState.address) {
+    throw new Error('Wallet is locked');
+  }
+  
+  return {
+    balance: walletState.balance,
+    balanceZec: (walletState.balance / 100000000).toFixed(8)
+  };
+}
+
+/**
+ * Handle send ZEC request from dApp
+ */
+async function handleDappSendZec(origin, params) {
+  const isConnected = await self.PermissionManager.isConnected(origin);
+  
+  if (!isConnected) {
+    throw new Error('Not connected. Call connect() first.');
+  }
+  
+  if (walletState.isLocked || !walletState.address) {
+    throw new Error('Wallet is locked');
+  }
+  
+  // Request user approval for transaction
+  const approved = await requestTransactionApproval(origin, {
+    type: 'sendZec',
+    params
+  });
+  
+  if (!approved) {
+    throw new Error('User rejected transaction');
+  }
+  
+  // Use existing handleSendZec
+  return await handleSendZec(params);
+}
+
+/**
+ * Handle deploy ZRC-20 request from dApp
+ */
+async function handleDappDeployZrc20(origin, params) {
+  const isConnected = await self.PermissionManager.isConnected(origin);
+  
+  if (!isConnected) {
+    throw new Error('Not connected. Call connect() first.');
+  }
+  
+  if (walletState.isLocked || !walletState.address) {
+    throw new Error('Wallet is locked');
+  }
+  
+  // Request user approval
+  const approved = await requestTransactionApproval(origin, {
+    type: 'deployZrc20',
+    params
+  });
+  
+  if (!approved) {
+    throw new Error('User rejected transaction');
+  }
+  
+  // Use existing handleDeployZrc20
+  return await handleDeployZrc20(params);
+}
+
+/**
+ * Handle mint ZRC-20 request from dApp
+ */
+async function handleDappMintZrc20(origin, params) {
+  const isConnected = await self.PermissionManager.isConnected(origin);
+  
+  if (!isConnected) {
+    throw new Error('Not connected. Call connect() first.');
+  }
+  
+  if (walletState.isLocked || !walletState.address) {
+    throw new Error('Wallet is locked');
+  }
+  
+  // Request user approval
+  const approved = await requestTransactionApproval(origin, {
+    type: 'mintZrc20',
+    params
+  });
+  
+  if (!approved) {
+    throw new Error('User rejected transaction');
+  }
+  
+  return await handleMintZrc20(params);
+}
+
+/**
+ * Handle transfer ZRC-20 request from dApp
+ */
+async function handleDappTransferZrc20(origin, params) {
+  const isConnected = await self.PermissionManager.isConnected(origin);
+  
+  if (!isConnected) {
+    throw new Error('Not connected. Call connect() first.');
+  }
+  
+  if (walletState.isLocked || !walletState.address) {
+    throw new Error('Wallet is locked');
+  }
+  
+  // Request user approval
+  const approved = await requestTransactionApproval(origin, {
+    type: 'transferZrc20',
+    params
+  });
+  
+  if (!approved) {
+    throw new Error('User rejected transaction');
+  }
+  
+  return await handleTransferZrc20(params);
+}
+
+/**
+ * Handle deploy collection request from dApp
+ */
+async function handleDappDeployCollection(origin, params) {
+  const isConnected = await self.PermissionManager.isConnected(origin);
+  
+  if (!isConnected) {
+    throw new Error('Not connected. Call connect() first.');
+  }
+  
+  if (walletState.isLocked || !walletState.address) {
+    throw new Error('Wallet is locked');
+  }
+  
+  // Request user approval
+  const approved = await requestTransactionApproval(origin, {
+    type: 'deployCollection',
+    params
+  });
+  
+  if (!approved) {
+    throw new Error('User rejected transaction');
+  }
+  
+  return await handleDeployCollection(params);
+}
+
+/**
+ * Handle mint NFT request from dApp
+ */
+async function handleDappMintNft(origin, params) {
+  const isConnected = await self.PermissionManager.isConnected(origin);
+  
+  if (!isConnected) {
+    throw new Error('Not connected. Call connect() first.');
+  }
+  
+  if (walletState.isLocked || !walletState.address) {
+    throw new Error('Wallet is locked');
+  }
+  
+  // Request user approval
+  const approved = await requestTransactionApproval(origin, {
+    type: 'mintNft',
+    params
+  });
+  
+  if (!approved) {
+    throw new Error('User rejected transaction');
+  }
+  
+  return await handleMintNft(params);
+}
+
+/**
+ * Handle inscribe request from dApp (Zerdinals)
+ */
+async function handleDappInscribe(origin, params) {
+  const isConnected = await self.PermissionManager.isConnected(origin);
+  
+  if (!isConnected) {
+    throw new Error('Not connected. Call connect() first.');
+  }
+  
+  if (walletState.isLocked || !walletState.address) {
+    throw new Error('Wallet is locked');
+  }
+  
+  // Request user approval
+  const approved = await requestTransactionApproval(origin, {
+    type: 'inscribe',
+    params
+  });
+  
+  if (!approved) {
+    throw new Error('User rejected transaction');
+  }
+  
+  return await handleInscribe(params);
+}
+
+// Pending approval requests
+const pendingApprovals = new Map();
+
+// Pending dApp connection requests (waiting for unlock)
+const pendingDappConnections = new Map();
+
+/**
+ * Request connection approval from user
+ * Opens extension popup and waits for user decision
+ */
+async function requestConnectionApproval(origin, metadata) {
+  const approvalId = `approval_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
+  console.log('[dApp] Requesting connection approval:', origin, approvalId);
+  
+  // Store approval request
+  await chrome.storage.local.set({
+    pendingApproval: {
+      id: approvalId,
+      type: 'connect',
+      origin,
+      metadata,
+      timestamp: Date.now()
+    }
+  });
+  
+  // Show badge notification
+  chrome.action.setBadgeText({ text: '1' });
+  chrome.action.setBadgeBackgroundColor({ color: '#f59e0b' }); // Amber
+  
+  // Open extension popup (not separate window)
+  try {
+    await chrome.action.openPopup();
+  } catch (error) {
+    console.warn('[dApp] Could not open popup, user may need to click extension');
+  }
+  
+  // Wait for user decision
+  return new Promise((resolve) => {
+    pendingApprovals.set(approvalId, { resolve });
+    
+    // Timeout after 2 minutes
+    setTimeout(() => {
+      if (pendingApprovals.has(approvalId)) {
+        pendingApprovals.delete(approvalId);
+        chrome.storage.local.remove('pendingApproval');
+        resolve(false); // Reject on timeout
+      }
+    }, 120000);
+  });
+}
+
+/**
+ * Request transaction approval from user
+ * Opens extension popup and waits for user decision
+ */
+async function requestTransactionApproval(origin, transaction) {
+  const approvalId = `approval_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
+  console.log('[dApp] Requesting transaction approval:', origin, transaction.type, approvalId);
+  
+  // Get site metadata from permissions
+  const permission = await self.PermissionManager.getPermission(origin);
+  const metadata = permission ? permission.metadata : { title: origin, favicon: '', url: origin };
+  
+  // Store approval request
+  await chrome.storage.local.set({
+    pendingApproval: {
+      id: approvalId,
+      type: 'transaction',
+      origin,
+      metadata,
+      transaction,
+      timestamp: Date.now()
+    }
+  });
+  
+  // Show badge notification
+  chrome.action.setBadgeText({ text: '1' });
+  chrome.action.setBadgeBackgroundColor({ color: '#f59e0b' }); // Amber
+  
+  // Open extension popup (not separate window)
+  try {
+    await chrome.action.openPopup();
+  } catch (error) {
+    console.warn('[dApp] Could not open popup, user may need to click extension');
+  }
+  
+  // Wait for user decision
+  return new Promise((resolve) => {
+    pendingApprovals.set(approvalId, { resolve });
+    
+    // Timeout after 2 minutes
+    setTimeout(() => {
+      if (pendingApprovals.has(approvalId)) {
+        pendingApprovals.delete(approvalId);
+        chrome.storage.local.remove('pendingApproval');
+        resolve(false); // Reject on timeout
+      }
+    }, 120000);
+  });
+}
+
+/**
+ * Handle approval response from popup
+ */
+async function handleApprovalResponse(data) {
+  const { id, approved } = data;
+  
+  console.log('[dApp] Approval response:', id, approved);
+  
+  const pending = pendingApprovals.get(id);
+  if (pending) {
+    pending.resolve(approved);
+    pendingApprovals.delete(id);
+    
+    // Clear badge when approval is handled
+    chrome.action.setBadgeText({ text: '' });
+  }
+  
+  // Clean up storage
+  await chrome.storage.local.remove('pendingApproval');
+  
+  return { success: true };
 }
 
 // EVENT LISTENERS
@@ -1861,6 +2503,101 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ 
           error: error.message || 'Unknown error occurred' 
         });
+      }
+    };
+    
+    handler();
+    return true; // Keep channel open for async response
+  }
+  
+  // Handle dApp requests from content script
+  if (message.type === 'DAPP_REQUEST') {
+    const handler = async () => {
+      try {
+        const { method, params, origin, url, favicon, title } = message.data;
+        
+        console.log('[Background] dApp request:', { method, origin });
+        
+        // Route to appropriate handler
+        let result;
+        
+        switch (method) {
+          case 'connect':
+            result = await handleDappConnect(origin, { url, favicon, title });
+            break;
+          
+          case 'disconnect':
+            result = await handleDappDisconnect(origin);
+            break;
+          
+          case 'getAddress':
+            result = await handleDappGetAddress(origin);
+            break;
+          
+          case 'getPublicKey':
+            result = await handleDappGetPublicKey(origin);
+            break;
+          
+          case 'getNetwork':
+            result = await handleDappGetNetwork(origin);
+            break;
+          
+          case 'getBalance':
+            result = await handleDappGetBalance(origin);
+            break;
+          
+          case 'sendZec':
+            result = await handleDappSendZec(origin, params);
+            break;
+          
+          case 'deployZrc20':
+            result = await handleDappDeployZrc20(origin, params);
+            break;
+          
+          case 'mintZrc20':
+            result = await handleDappMintZrc20(origin, params);
+            break;
+          
+          case 'transferZrc20':
+            result = await handleDappTransferZrc20(origin, params);
+            break;
+          
+          case 'deployCollection':
+            result = await handleDappDeployCollection(origin, params);
+            break;
+          
+          case 'mintNft':
+            result = await handleDappMintNft(origin, params);
+            break;
+          
+          case 'inscribe':
+            result = await handleDappInscribe(origin, params);
+            break;
+          
+          default:
+            throw new Error(`Unknown dApp method: ${method}`);
+        }
+        
+        sendResponse({ success: true, data: result });
+      } catch (error) {
+        console.error('[Background] dApp request error:', error);
+        sendResponse({ success: false, error: error.message || 'Request failed' });
+      }
+    };
+    
+    handler();
+    return true; // Keep channel open for async response
+  }
+  
+  // Handle approval response from popup
+  if (message.type === 'APPROVAL_RESPONSE') {
+    const handler = async () => {
+      try {
+        const result = await handleApprovalResponse(message.data);
+        sendResponse(result);
+      } catch (error) {
+        console.error('[Background] Approval response error:', error);
+        sendResponse({ success: false, error: error.message });
       }
     };
     

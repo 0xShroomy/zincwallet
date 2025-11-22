@@ -28,6 +28,8 @@ function buildZincInscription(type, data) {
   console.log('[InscriptionBuilder] Building Zinc inscription:', type, data);
   
   let buffer;
+  let mintPrice = 0;
+  let mintRecipient = null;
   
   switch (type) {
     case 'deployZrc20':
@@ -35,6 +37,9 @@ function buildZincInscription(type, data) {
       break;
     case 'mintZrc20':
       buffer = buildZrc20Mint(data);
+      // Extract mint price and recipient from data if available
+      if (data.mintPrice) mintPrice = data.mintPrice;
+      if (data.mintRecipient) mintRecipient = data.mintRecipient;
       break;
     case 'transferZrc20':
       buffer = buildZrc20Transfer(data);
@@ -44,6 +49,9 @@ function buildZincInscription(type, data) {
       break;
     case 'mintNft':
       buffer = buildZincCoreMint(data);
+      // Extract mint price for NFTs too
+      if (data.mintPrice) mintPrice = data.mintPrice;
+      if (data.mintRecipient) mintRecipient = data.mintRecipient;
       break;
     default:
       throw new Error(`Unknown Zinc inscription type: ${type}`);
@@ -53,16 +61,18 @@ function buildZincInscription(type, data) {
     protocol: 'zinc',
     opReturn: buffer,
     treasuryAddress: ZINC_TREASURY_ADDRESS,
-    treasuryAmount: ZINC_TREASURY_TIP
+    treasuryAmount: ZINC_TREASURY_TIP,
+    mintPrice: mintPrice, // ZEC amount to pay to deployer
+    mintRecipient: mintRecipient // Address to receive mint payment
   };
 }
 
 /**
  * Build ZRC-20 Deploy inscription
- * Format: [protocol_id: u8][operation: u8][ticker: null-terminated][max: u64][limit: u64][decimals: u8]
+ * Format: [protocol_id: u8][operation: u8][ticker: null-terminated][max: u64][limit: u64][decimals: u8][mintPrice: u64][deployerAddress: variable]
  */
 function buildZrc20Deploy(data) {
-  const { tick, max, limit, decimals = 8 } = data;
+  const { tick, max, limit, decimals = 8, mintPrice = 0, deployerAddress } = data;
   
   // Validate ticker
   if (!tick || tick.length < 1 || tick.length > 10) {
@@ -79,9 +89,16 @@ function buildZrc20Deploy(data) {
   if (mintLimit <= 0) throw new Error('Mint limit must be positive');
   if (mintLimit > maxSupply) throw new Error('Mint limit cannot exceed max supply');
   
+  // Convert mint price to zatoshis
+  const mintPriceZatoshis = BigInt(Math.floor((mintPrice || 0) * 100000000));
+  
+  // Encode deployer address if provided
+  const deployerBytes = deployerAddress ? new TextEncoder().encode(deployerAddress) : new Uint8Array(0);
+  
   // Calculate buffer size
   const tickerBytes = new TextEncoder().encode(tick);
-  const bufferSize = 1 + 1 + tickerBytes.length + 1 + 8 + 8 + 1; // protocol + op + ticker + null + max + limit + decimals
+  const bufferSize = 1 + 1 + tickerBytes.length + 1 + 8 + 8 + 1 + 8 + 1 + deployerBytes.length; 
+  // protocol + op + ticker + null + max + limit + decimals + mintPrice + deployerLength + deployer
   
   const buffer = new Uint8Array(bufferSize);
   let offset = 0;
@@ -110,11 +127,25 @@ function buildZrc20Deploy(data) {
   // Decimals (u8)
   buffer[offset++] = decimals;
   
+  // Mint price (u64 little-endian, in zatoshis)
+  const priceView = new DataView(buffer.buffer, offset, 8);
+  priceView.setBigUint64(0, mintPriceZatoshis, true);
+  offset += 8;
+  
+  // Deployer address (length-prefixed)
+  buffer[offset++] = deployerBytes.length;
+  if (deployerBytes.length > 0) {
+    buffer.set(deployerBytes, offset);
+    offset += deployerBytes.length;
+  }
+  
   console.log('[InscriptionBuilder] ZRC-20 Deploy:', {
     tick,
     max: max.toString(),
     limit: limit.toString(),
     decimals,
+    mintPrice: mintPrice || 0,
+    deployerAddress: deployerAddress || 'none',
     size: buffer.length
   });
   
@@ -303,10 +334,34 @@ function buildZincCoreMint(data) {
 function buildZerdinalsInscription(data) {
   console.log('[InscriptionBuilder] Building Zerdinals inscription:', data);
   
-  const { contentType, content } = data;
+  let contentType, content;
   
-  if (!contentType) throw new Error('Content type required for Zerdinals');
-  if (!content) throw new Error('Content required for Zerdinals');
+  // Handle ZRC-20 operations (convert to JSON)
+  if (data.op === 'deploy') {
+    contentType = 'application/json';
+    content = JSON.stringify({
+      p: 'zrc-20',
+      op: 'deploy',
+      tick: data.tick,
+      max: data.max,
+      lim: data.lim
+    });
+  } else if (data.op === 'mint') {
+    contentType = 'application/json';
+    content = JSON.stringify({
+      p: 'zrc-20',
+      op: 'mint',
+      tick: data.tick,
+      amt: data.amt
+    });
+  } else {
+    // Regular inscription (text, image, etc.)
+    contentType = data.contentType;
+    content = data.content;
+    
+    if (!contentType) throw new Error('Content type required for Zerdinals');
+    if (!content) throw new Error('Content required for Zerdinals');
+  }
   
   // Build envelope: OP_FALSE OP_IF "ord" OP_1 <content-type> OP_0 <content> OP_ENDIF
   const envelope = buildZerdinalsEnvelope(contentType, content);
@@ -314,9 +369,9 @@ function buildZerdinalsInscription(data) {
   return {
     protocol: 'zerdinals',
     envelope: envelope,
-    // Zerdinals doesn't use treasury in the same way
-    treasuryAddress: null,
-    treasuryAmount: 0
+    // Zerdinals now also includes treasury tip
+    treasuryAddress: ZINC_TREASURY_ADDRESS,
+    treasuryAmount: ZINC_TREASURY_TIP
   };
 }
 
