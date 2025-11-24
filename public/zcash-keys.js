@@ -428,6 +428,83 @@ self.ZcashKeys = (function() {
     }
   }
   
+  /**
+   * Sign a message with a private key
+   * Returns a signature that can be verified with the corresponding public key
+   */
+  async function signMessage(message, privateKeyHex) {
+    try {
+      // Use the real secp256k1 implementation for signing
+      if (!self.FixedZcashKeys) {
+        throw new Error('FixedZcashKeys not loaded! Import fix-zcash-keys.js first');
+      }
+      
+      // Convert message to bytes
+      const messageBytes = new TextEncoder().encode(message);
+      
+      // Add Bitcoin/Zcash message prefix to prevent transaction signature reuse
+      const prefix = "Zcash Signed Message:\n";
+      const prefixBytes = new TextEncoder().encode(prefix);
+      const prefixLength = new Uint8Array([prefixBytes.length]);
+      const messageLength = encodeVarInt(messageBytes.length);
+      
+      // Construct the full message: prefix_length + prefix + message_length + message
+      const fullMessage = new Uint8Array([
+        ...prefixLength,
+        ...prefixBytes,
+        ...messageLength,
+        ...messageBytes
+      ]);
+      
+      // Double SHA-256 hash
+      const hash1 = await crypto.subtle.digest('SHA-256', fullMessage);
+      const hash2 = await crypto.subtle.digest('SHA-256', hash1);
+      const messageHash = new Uint8Array(hash2);
+      
+      // Convert private key hex to bytes
+      const privateKeyBytes = hexToBytes(privateKeyHex);
+      
+      // Sign using secp256k1
+      const signature = self.FixedZcashKeys.signHash(messageHash, privateKeyBytes);
+      
+      // Convert signature to hex
+      const signatureHex = Array.from(signature)
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+      
+      return signatureHex;
+    } catch (error) {
+      console.error('[ZcashKeys] Message signing failed:', error);
+      throw new Error('Failed to sign message: ' + error.message);
+    }
+  }
+  
+  /**
+   * Encode variable length integer (VarInt)
+   */
+  function encodeVarInt(n) {
+    if (n < 0xfd) {
+      return new Uint8Array([n]);
+    } else if (n <= 0xffff) {
+      return new Uint8Array([0xfd, n & 0xff, (n >> 8) & 0xff]);
+    } else if (n <= 0xffffffff) {
+      return new Uint8Array([0xfe, n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >> 24) & 0xff]);
+    } else {
+      throw new Error('VarInt too large');
+    }
+  }
+  
+  /**
+   * Convert hex string to bytes
+   */
+  function hexToBytes(hex) {
+    const bytes = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < hex.length; i += 2) {
+      bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+    }
+    return bytes;
+  }
+  
   return {
     deriveAddress,
     importFromPrivateKey,
@@ -436,6 +513,7 @@ self.ZcashKeys = (function() {
     deriveKeyFromPath,
     base58Decode,
     base58Encode,
+    signMessage,
   };
   
 })();

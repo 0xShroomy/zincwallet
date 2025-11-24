@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zync Wallet - Developer Documentation</title>
+  <meta name="description" content="Complete integration guide for Zync Wallet. Learn how to connect your dApp to Zcash's first browser extension wallet.">
+  <link rel="icon" href="./logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #000000;
+      color: #e4e4e7;
+      line-height: 1.7;
+    }
+    
+    /* Sidebar */
+    .sidebar {
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: 280px;
+      height: 100vh;
+      background: #0a0a0a;
+      border-right: 1px solid #27272a;
+      overflow-y: auto;
+      padding: 2rem;
+    }
+    
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #f59e0b;
+      margin-bottom: 2rem;
+    }
+    
+    .logo img {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+    }
+    
+    .nav-section {
+      margin-bottom: 2rem;
+    }
+    
+    .nav-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      color: #71717a;
+      margin-bottom: 0.75rem;
+      letter-spacing: 0.05em;
+    }
+    
+    .nav-link {
+      display: block;
+      padding: 0.5rem 0.75rem;
+      color: #a1a1aa;
+      text-decoration: none;
+      border-radius: 0.5rem;
+      transition: all 0.2s;
+      font-size: 0.95rem;
+    }
+    
+    .nav-link:hover {
+      background: #121212;
+      color: #f59e0b;
+    }
+    
+    /* Main Content */
+    .main {
+      margin-left: 280px;
+      padding: 3rem 4rem;
+      max-width: 1000px;
+    }
+    
+    h1 {
+      font-size: 3rem;
+      color: #ffffff;
+      margin-bottom: 1rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+    
+    h2 {
+      font-size: 2rem;
+      color: #ffffff;
+      margin-top: 3rem;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 2px solid #27272a;
+      font-weight: 700;
+    }
+    
+    h3 {
+      font-size: 1.5rem;
+      color: #f59e0b;
+      margin-top: 2rem;
+      margin-bottom: 1rem;
+      font-weight: 600;
+    }
+    
+    p {
+      margin-bottom: 1rem;
+      color: #d4d4d8;
+    }
+    
+    code {
+      background: #121212;
+      padding: 0.25rem 0.5rem;
+      border-radius: 0.375rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.9em;
+      color: #f59e0b;
+      border: 1px solid #27272a;
+    }
+    
+    pre {
+      background: #0a0a0a;
+      padding: 1.5rem;
+      border-radius: 0.75rem;
+      overflow-x: auto;
+      margin: 1.5rem 0;
+      border: 1px solid #27272a;
+    }
+    
+    pre code {
+      background: none;
+      padding: 0;
+      color: #d4d4d8;
+      border: none;
+    }
+    
+    .download-box {
+      background: #121212;
+      border: 2px solid #f59e0b;
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+      margin: 2rem 0;
+    }
+    
+    .download-box h3 {
+      margin-top: 0;
+      color: #f59e0b;
+    }
+    
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1.5rem;
+      background: #f59e0b;
+      color: #000000;
+      text-decoration: none;
+      border-radius: 0.75rem;
+      font-weight: 600;
+      transition: all 0.2s;
+      margin-top: 1rem;
+    }
+    
+    .btn:hover {
+      background: #d97706;
+      transform: translateY(-2px);
+    }
+    
+    ul, ol {
+      margin-left: 1.5rem;
+      margin-bottom: 1rem;
+    }
+    
+    li {
+      margin-bottom: 0.5rem;
+      color: #d4d4d8;
+    }
+    
+    .note {
+      background: #0a0a0a;
+      border-left: 4px solid #f59e0b;
+      padding: 1rem 1.5rem;
+      margin: 1.5rem 0;
+      border-radius: 0.5rem;
+    }
+    
+    .note strong {
+      color: #f59e0b;
+    }
+    
+    a {
+      color: #f59e0b;
+      text-decoration: none;
+    }
+    
+    a:hover {
+      text-decoration: underline;
+    }
+    
+    @media (max-width: 1024px) {
+      .sidebar {
+        transform: translateX(-100%);
+      }
+      
+      .main {
+        margin-left: 0;
+        padding: 2rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="logo">
+      <img src="./logo.png" alt="Zync Wallet">
+      <span>Zync Docs</span>
+    </div>
+    
+    <nav>
+      <div class="nav-section">
+        <div class="nav-title">Getting Started</div>
+        <a href="#quick-start" class="nav-link">Quick Start</a>
+        <a href="#installation" class="nav-link">Installation</a>
+      </div>
+      
+      <div class="nav-section">
+        <div class="nav-title">Core Methods</div>
+        <a href="#connection" class="nav-link">Connection</a>
+        <a href="#account" class="nav-link">Account</a>
+        <a href="#signature" class="nav-link">Sign Message</a>
+        <a href="#transactions" class="nav-link">Transactions</a>
+      </div>
+      
+      <div class="nav-section">
+        <div class="nav-title">Advanced</div>
+        <a href="#tokens" class="nav-link">ZRC-20 Tokens</a>
+        <a href="#nfts" class="nav-link">NFTs</a>
+        <a href="#events" class="nav-link">Event Listeners</a>
+        <a href="#typescript" class="nav-link">TypeScript</a>
+      </div>
+      
+      <div class="nav-section">
+        <div class="nav-title">Resources</div>
+        <a href="https://zyncwallet.xyz" class="nav-link">Main Website</a>
+        <a href="https://twitter.com/0xShinno" target="_blank" class="nav-link">Twitter</a>
+      </div>
+    </nav>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main">
+    <h1>Developer Documentation</h1>
+    <p>Complete integration guide for Zync Wallet. Build dApps on Zcash with seamless wallet integration.</p>
+
+    <div class="download-box">
+      <h3>TypeScript Definitions</h3>
+      <p>For TypeScript projects, download our type definitions file for full IntelliSense support:</p>
+      <a href="./zyncwallet.d.ts" class="btn" download>
+        <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+        </svg>
+        Download zyncwallet.d.ts
+      </a>
+      <p style="margin-top: 1rem; font-size: 0.9rem; color: #a1a1aa;">Place in: <code>src/types/zyncwallet.d.ts</code></p>
+    </div>
+
+    <h2 id="installation">Installation</h2>
+    <p>Zync Wallet is a browser extension. Users install it from your website.</p>
+    <p><strong>No npm package needed</strong> - the wallet injects <code>window.zyncwallet</code> into every webpage automatically.</p>
+
+    <h2 id="quick-start">Quick Start</h2>
+    <pre><code>// 1. Check if Zync Wallet is installed
+if (window.zyncwallet) {
+  console.log('Zync Wallet detected!');
+  
+  // 2. Connect to the wallet
+  const result = await window.zyncwallet.connect();
+  console.log('Connected:', result.address);
+  
+  // 3. Get balance
+  const balance = await window.zyncwallet.getBalance();
+  console.log('Balance:', balance.balanceZec, 'ZEC');
+  
+  // 4. Sign a message (for authentication)
+  const sig = await window.zyncwallet.signMessage('Login');
+  console.log('Signature:', sig.signature);
+} else {
+  console.log('Please install Zync Wallet');
+}</code></pre>
+
+    <h2 id="connection">Connection Methods</h2>
+    
+    <h3>connect()</h3>
+    <p>Request connection to user's wallet. Opens approval popup.</p>
+    <pre><code>const result = await window.zyncwallet.connect();
+// Returns: {
+//   address: "t1...",
+//   network: "mainnet" | "testnet",
+//   connected: true
+// }</code></pre>
+
+    <h3>disconnect()</h3>
+    <p>Disconnect from the wallet.</p>
+    <pre><code>await window.zyncwallet.disconnect();</code></pre>
+
+    <h2 id="account">Account Methods</h2>
+    
+    <h3>getAddress()</h3>
+    <pre><code>const result = await window.zyncwallet.getAddress();
+// Returns: { address: "t1..." }</code></pre>
+
+    <h3>getBalance()</h3>
+    <pre><code>const result = await window.zyncwallet.getBalance();
+// Returns: {
+//   balance: 1685775,      // zatoshis
+//   balanceZec: "0.01685775" // ZEC
+// }</code></pre>
+
+    <h3>getNetwork()</h3>
+    <pre><code>const result = await window.zyncwallet.getNetwork();
+// Returns: { network: "mainnet" | "testnet" }</code></pre>
+
+    <h2 id="signature">Sign Message</h2>
+    <p>Sign a message for authentication or proof of ownership. <strong>No gas fees!</strong></p>
+    
+    <pre><code>const result = await window.zyncwallet.signMessage('Login to MyApp');
+// Returns: {
+//   signature: "304402...", // DER-encoded secp256k1
+//   address: "t1...",
+//   message: "Login to MyApp"
+// }</code></pre>
+
+    <div class="note">
+      <strong>Use cases:</strong> Login/authentication, proof of ownership, off-chain verification
+    </div>
+
+    <h2 id="transactions">Send ZEC</h2>
+    <pre><code>const result = await window.zyncwallet.sendZec({
+  to: 't1...',      // Recipient address
+  amount: 0.001     // Amount in ZEC
+});
+// Returns: { success: true, txid: "abc..." }</code></pre>
+
+    <h2 id="tokens">ZRC-20 Tokens</h2>
+    
+    <h3>Deploy Token</h3>
+    <pre><code>const result = await window.zyncwallet.deployZrc20({
+  tick: 'TEST',     // Token ticker (4 chars)
+  max: 21000000,    // Max supply
+  limit: 1000,      // Per-mint limit
+  decimals: 8       // Decimal places
+});</code></pre>
+
+    <h3>Mint Tokens</h3>
+    <pre><code>const result = await window.zyncwallet.mintZrc20({
+  deployTxid: 'abc...',  // Deploy transaction ID
+  amount: 100            // Amount to mint
+});</code></pre>
+
+    <h3>Transfer Tokens</h3>
+    <pre><code>const result = await window.zyncwallet.transferZrc20({
+  deployTxid: 'abc...',  // Token deploy txid
+  amount: 50,            // Amount to transfer
+  to: 't1...'           // Recipient address
+});</code></pre>
+
+    <h2 id="nfts">NFTs</h2>
+    
+    <h3>Deploy Collection</h3>
+    <pre><code>const result = await window.zyncwallet.deployCollection({
+  name: 'My Collection',
+  metadata: { description: '...' }
+});</code></pre>
+
+    <h3>Mint NFT</h3>
+    <pre><code>const result = await window.zyncwallet.mintNft({
+  collectionTxid: 'abc...',
+  content: '<svg>...</svg>',
+  mimeType: 'image/svg+xml'
+});</code></pre>
+
+    <h2 id="events">Event Listeners</h2>
+    <p>Listen for wallet changes in real-time.</p>
+
+    <h3>accountsChanged</h3>
+    <pre><code>window.zyncwallet.on('accountsChanged', ({ address }) => {
+  console.log('User switched to:', address);
+  // Update your UI with new address
+});</code></pre>
+
+    <h3>networkChanged</h3>
+    <pre><code>window.zyncwallet.on('networkChanged', ({ network }) => {
+  console.log('Network changed to:', network);
+  // Reload data for new network
+});</code></pre>
+
+    <h3>disconnect</h3>
+    <pre><code>window.zyncwallet.on('disconnect', () => {
+  console.log('Wallet disconnected');
+  // Clear user session
+});</code></pre>
+
+    <h3>Remove Listeners</h3>
+    <pre><code>const handler = ({ address }) => console.log(address);
+
+// Add listener
+window.zyncwallet.on('accountsChanged', handler);
+
+// Remove listener
+window.zyncwallet.off('accountsChanged', handler);</code></pre>
+
+    <h2 id="typescript">TypeScript Support</h2>
+    <p>Download <code>zyncwallet.d.ts</code> from the top of this page and place it in your project:</p>
+    <pre><code>// Place in: src/types/zyncwallet.d.ts
+// TypeScript automatically detects it!
+
+// Now you get autocomplete:
+window.zyncwallet.con... // Shows: connect(), isConnected()</code></pre>
+
+    <h2>Error Handling</h2>
+    <p>All methods return promises and throw errors on failure.</p>
+    <pre><code>try {
+  const result = await window.zyncwallet.connect();
+  console.log('Success:', result);
+} catch (error) {
+  console.error('Error:', error.message);
+  
+  // Common errors:
+  // - "User rejected connection request"
+  // - "Wallet is locked"
+  // - "Not connected. Call connect() first."
+}</code></pre>
+
+    <h2>Support</h2>
+    <ul>
+      <li><strong>Twitter:</strong> <a href="https://twitter.com/0xShinno">@0xShinno</a></li>
+      <li><strong>Website:</strong> <a href="https://zyncwallet.xyz">zyncwallet.xyz</a></li>
+    </ul>
+
+    <div style="margin-top: 4rem; padding-top: 2rem; border-top: 1px solid #27272a; text-align: center; color: #71717a;">
+      <p>&copy; 2024 Zync Wallet. MIT License.</p>
+    </div>
+  </main>
+</body>
+</html>

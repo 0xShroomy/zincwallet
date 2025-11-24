@@ -680,6 +680,9 @@ async function handleSwitchNetwork(data) {
       }
     });
     
+    // Broadcast networkChanged event to connected dApps
+    await broadcastEventToTabs('networkChanged', { network });
+    
     // Refresh balance on the new network if wallet is unlocked
     if (!walletState.isLocked && walletState.address) {
       console.log('[Background] Refreshing balance for new network...');
@@ -1392,6 +1395,9 @@ async function handleSwitchWallet(data) {
     
     console.log('[Background] Switched to wallet:', wallet.name);
     
+    // Broadcast accountsChanged event to connected dApps
+    await broadcastEventToTabs('accountsChanged', { address });
+    
     // Refresh balance
     handleRefreshBalance().catch(err => {
       console.warn('[Background] Auto-refresh balance failed:', err);
@@ -1891,6 +1897,41 @@ async function handleSendZec(data) {
 }
 
 // ============================================================================
+// DAPP EVENT BROADCASTING
+// ============================================================================
+
+/**
+ * Broadcast event to all tabs with connected dApps
+ */
+async function broadcastEventToTabs(eventName, eventData) {
+  try {
+    const tabs = await chrome.tabs.query({});
+    const permissions = await chrome.storage.local.get('dapp_permissions');
+    const dappPermissions = permissions.dapp_permissions || {};
+    
+    // Get all connected origins
+    const connectedOrigins = Object.keys(dappPermissions).filter(
+      origin => dappPermissions[origin].granted
+    );
+    
+    // Send event to tabs matching connected origins
+    for (const tab of tabs) {
+      if (tab.url && connectedOrigins.some(origin => tab.url.startsWith(origin))) {
+        chrome.tabs.sendMessage(tab.id, {
+          type: 'DAPP_EVENT',
+          event: eventName,
+          data: eventData
+        }).catch(() => {
+          // Tab may not have content script, ignore error
+        });
+      }
+    }
+  } catch (error) {
+    console.error('[Background] Failed to broadcast event:', error);
+  }
+}
+
+// ============================================================================
 // DAPP REQUEST HANDLERS
 // ============================================================================
 
@@ -2002,7 +2043,92 @@ async function handleDappDisconnect(origin) {
     }
   });
   
+  // Broadcast disconnect event to connected dApps
+  await broadcastEventToTabs('disconnect', {});
+  
   return { disconnected: true };
+}
+
+/**
+ * Handle sign message request
+ */
+async function handleDappSignMessage(origin, params) {
+  const hasPermission = await self.PermissionManager.hasPermission(origin, 'connect');
+  
+  if (!hasPermission) {
+    throw new Error('Permission denied. Call connect() first.');
+  }
+  
+  if (!walletState.address) {
+    throw new Error('Wallet is locked');
+  }
+  
+  const { message } = params;
+  
+  if (!message) {
+    throw new Error('Message is required');
+  }
+  
+  // Request user approval for signing
+  const approved = await requestSignatureApproval(origin, message);
+  
+  if (!approved) {
+    throw new Error('User rejected signature request');
+  }
+  
+  // Get private key from session
+  const session = await chrome.storage.session.get(['cachedPrivateKey']);
+  if (!session.cachedPrivateKey) {
+    throw new Error('Private key not available. Please unlock wallet.');
+  }
+  
+  // Sign the message
+  const signature = await self.ZcashKeys.signMessage(message, session.cachedPrivateKey);
+  
+  return {
+    signature,
+    address: walletState.address,
+    message
+  };
+}
+
+/**
+ * Request signature approval from user
+ */
+async function requestSignatureApproval(origin, message) {
+  return new Promise((resolve) => {
+    const approvalId = `signature_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Store pending approval
+    const metadata = { title: origin, url: origin };
+    
+    pendingApprovals.set(approvalId, { resolve, origin, metadata });
+    
+    // Store in local storage for popup to access
+    chrome.storage.local.set({
+      pendingApproval: {
+        id: approvalId,
+        type: 'signature',
+        origin,
+        metadata,
+        message,
+        timestamp: Date.now()
+      }
+    });
+    
+    // Set badge to notify user
+    chrome.action.setBadgeText({ text: '1' });
+    chrome.action.setBadgeBackgroundColor({ color: '#F59E0B' });
+    
+    // Try to open popup automatically (works when triggered by user action in dApp)
+    try {
+      chrome.action.openPopup();
+    } catch (error) {
+      console.warn('[dApp] Could not open popup, user may need to click extension');
+    }
+    
+    console.log('[dApp] Signature approval requested:', origin, approvalId);
+  });
 }
 
 /**
@@ -2572,6 +2698,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           
           case 'inscribe':
             result = await handleDappInscribe(origin, params);
+            break;
+          
+          case 'signMessage':
+            result = await handleDappSignMessage(origin, params);
             break;
           
           default:

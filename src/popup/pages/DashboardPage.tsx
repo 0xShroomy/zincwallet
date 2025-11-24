@@ -96,7 +96,7 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
   // Fetch on mount and when wallet updates
   useEffect(() => {
     fetchActiveWalletName();
-  }, [walletState.address]); // Re-fetch when address changes (wallet switched)
+  }, [walletState.address, walletState]); // Re-fetch when address changes or wallet state updates
   
   // Function to check for pending toast messages
   const checkPendingToast = async () => {

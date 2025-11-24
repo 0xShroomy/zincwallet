@@ -4,15 +4,17 @@ import browser from 'webextension-polyfill';
 interface ApprovalRequest {
   id: string;
   origin: string;
+  type: 'transaction' | 'signature';
   metadata: {
     title: string;
     favicon: string;
     url: string;
   };
-  transaction: {
+  transaction?: {
     type: string;
     params: any;
   };
+  message?: string;
   timestamp: number;
 }
 
@@ -29,7 +31,7 @@ export default function TransactionApprovalPage() {
       // Get pending approval request from storage
       const result = await browser.storage.local.get('pendingApproval');
       
-      if (result.pendingApproval && result.pendingApproval.type === 'transaction') {
+      if (result.pendingApproval && (result.pendingApproval.type === 'transaction' || result.pendingApproval.type === 'signature')) {
         setRequest(result.pendingApproval);
       }
       
@@ -56,14 +58,24 @@ export default function TransactionApprovalPage() {
       // Clear approval from storage
       await browser.storage.local.remove('pendingApproval');
       
-      // Store pending message for dashboard to show
-      await browser.storage.local.set({
-        pendingToast: {
-          message: 'Transaction pending...',
-          type: 'info',
-          timestamp: Date.now()
-        }
-      });
+      // Store appropriate message based on request type
+      if (request.type === 'signature') {
+        await browser.storage.local.set({
+          pendingToast: {
+            message: 'Message signed',
+            type: 'success',
+            timestamp: Date.now()
+          }
+        });
+      } else {
+        await browser.storage.local.set({
+          pendingToast: {
+            message: 'Transaction pending...',
+            type: 'info',
+            timestamp: Date.now()
+          }
+        });
+      }
       
       // Return to dashboard
       window.location.href = '/src/popup/index.html';
@@ -88,14 +100,24 @@ export default function TransactionApprovalPage() {
       // Clear approval from storage
       await browser.storage.local.remove('pendingApproval');
       
-      // Store info message for dashboard to show
-      await browser.storage.local.set({
-        pendingToast: {
-          message: 'Transaction rejected',
-          type: 'info',
-          timestamp: Date.now()
-        }
-      });
+      // Store appropriate message based on request type
+      if (request.type === 'signature') {
+        await browser.storage.local.set({
+          pendingToast: {
+            message: 'Signature rejected',
+            type: 'info',
+            timestamp: Date.now()
+          }
+        });
+      } else {
+        await browser.storage.local.set({
+          pendingToast: {
+            message: 'Transaction rejected',
+            type: 'info',
+            timestamp: Date.now()
+          }
+        });
+      }
       
       // Return to dashboard
       window.location.href = '/src/popup/index.html';
@@ -104,7 +126,10 @@ export default function TransactionApprovalPage() {
     }
   }
 
-  function getTransactionTitle(type: string): string {
+  function getTransactionTitle(type: string | undefined): string {
+    if (type === 'signature') {
+      return 'Sign Message';
+    }
     const titles: Record<string, string> = {
       sendZec: 'Send ZEC',
       deployZrc20: 'Deploy ZRC-20 Token',
@@ -114,10 +139,17 @@ export default function TransactionApprovalPage() {
       mintNft: 'Mint NFT',
       inscribe: 'Create Inscription'
     };
-    return titles[type] || 'Transaction Request';
+    return titles[type || ''] || 'Transaction Request';
   }
 
-  function getTransactionIcon(type: string): JSX.Element {
+  function getTransactionIcon(type: string | undefined): JSX.Element {
+    if (type === 'signature') {
+      return (
+        <svg className="w-8 h-8 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+        </svg>
+      );
+    }
     if (type === 'sendZec') {
       return (
         <svg className="w-8 h-8 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -135,6 +167,27 @@ export default function TransactionApprovalPage() {
   function renderTransactionDetails() {
     if (!request) return null;
 
+    // Handle signature requests
+    if (request.type === 'signature') {
+      return (
+        <div className="space-y-3">
+          <div className="bg-zinc-800 rounded-lg p-4">
+            <p className="text-sm text-zinc-400 mb-2">Message to sign:</p>
+            <p className="text-white font-mono text-sm break-all whitespace-pre-wrap">
+              {request.message}
+            </p>
+          </div>
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
+            <p className="text-xs text-amber-200">
+              ⓘ Signing this message does not cost any gas fees or execute any transactions on-chain.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    if (!request.transaction) return null;
+    
     const { type, params } = request.transaction;
 
     switch (type) {
@@ -361,10 +414,10 @@ export default function TransactionApprovalPage() {
         {/* Header */}
         <div className="text-center mb-6">
           <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-zinc-800 flex items-center justify-center">
-            {getTransactionIcon(request.transaction.type)}
+            {getTransactionIcon(request.type === 'signature' ? 'signature' : request.transaction?.type)}
           </div>
           <h1 className="text-2xl font-bold text-white mb-2">
-            {getTransactionTitle(request.transaction.type)}
+            {getTransactionTitle(request.type === 'signature' ? 'signature' : request.transaction?.type)}
           </h1>
           <p className="text-zinc-400">
             {request.metadata.title || 'Unknown dApp'}
@@ -381,7 +434,7 @@ export default function TransactionApprovalPage() {
         </div>
 
         {/* Treasury Tip Warning (for Zinc Protocol) */}
-        {requiresTreasuryTip(request.transaction.type) && (
+        {request.transaction && requiresTreasuryTip(request.transaction.type) && (
           <div className="bg-amber-500/10 border border-amber-500/50 rounded-lg p-4 mb-6">
             <div className="flex items-start gap-3">
               <svg className="w-6 h-6 text-amber-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">

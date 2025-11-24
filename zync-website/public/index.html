@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zync Wallet - Zcash Browser Extension</title>
+  <meta name="description" content="The first browser extension wallet for Zinc Protocol on Zcash. Manage ZEC, ZRC-20 tokens, and NFTs directly in your browser.">
+  <link rel="icon" href="./logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #000000;
+      color: #ffffff;
+      line-height: 1.6;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 2rem;
+    }
+    
+    header {
+      padding: 1.5rem 0;
+      border-bottom: 1px solid #27272a;
+      background: #0a0a0a;
+    }
+    
+    .header-content {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #f59e0b;
+    }
+    
+    .logo img {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+    }
+    
+    nav {
+      display: flex;
+      gap: 2rem;
+    }
+    
+    nav a {
+      color: #a1a1aa;
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 0.95rem;
+      transition: color 0.2s;
+    }
+    
+    nav a:hover {
+      color: #f59e0b;
+    }
+    
+    .hero {
+      padding: 8rem 0 6rem;
+      text-align: center;
+    }
+    
+    .hero h1 {
+      font-size: 4rem;
+      font-weight: 800;
+      margin-bottom: 1.5rem;
+      background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: -0.02em;
+    }
+    
+    .hero p {
+      font-size: 1.25rem;
+      color: #a1a1aa;
+      max-width: 700px;
+      margin: 0 auto 3rem;
+      line-height: 1.8;
+    }
+    
+    .cta-buttons {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    
+    .btn {
+      padding: 1rem 2rem;
+      border-radius: 0.75rem;
+      font-size: 1rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.75rem;
+      border: none;
+      cursor: pointer;
+    }
+    
+    .btn-primary {
+      background: #f59e0b;
+      color: #000000;
+    }
+    
+    .btn-primary:hover {
+      background: #d97706;
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px rgba(245, 158, 11, 0.4);
+    }
+    
+    .btn-secondary {
+      background: #27272a;
+      color: #f59e0b;
+      border: 1px solid #3f3f46;
+    }
+    
+    .btn-secondary:hover {
+      background: #3f3f46;
+      border-color: #f59e0b;
+    }
+    
+    .features {
+      padding: 6rem 0;
+      background: #0a0a0a;
+    }
+    
+    .features h2 {
+      text-align: center;
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin-bottom: 3rem;
+      color: #ffffff;
+    }
+    
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 1.5rem;
+    }
+    
+    .feature-card {
+      background: #121212;
+      padding: 2rem;
+      border-radius: 1rem;
+      border: 1px solid #27272a;
+      transition: all 0.3s;
+    }
+    
+    .feature-card:hover {
+      transform: translateY(-5px);
+      border-color: #f59e0b;
+      box-shadow: 0 10px 30px rgba(245, 158, 11, 0.15);
+    }
+    
+    .feature-card h3 {
+      font-size: 1.5rem;
+      margin-bottom: 1rem;
+      color: #f59e0b;
+      font-weight: 600;
+    }
+    
+    .feature-card p {
+      color: #a1a1aa;
+      line-height: 1.7;
+    }
+    
+    .installation {
+      padding: 6rem 0;
+    }
+    
+    .installation h2 {
+      text-align: center;
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin-bottom: 3rem;
+      color: #ffffff;
+    }
+    
+    .steps {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    
+    .step {
+      display: flex;
+      gap: 2rem;
+      margin-bottom: 2.5rem;
+      align-items: flex-start;
+    }
+    
+    .step-number {
+      flex-shrink: 0;
+      width: 3rem;
+      height: 3rem;
+      background: #f59e0b;
+      color: #000000;
+      border-radius: 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 1.25rem;
+    }
+    
+    .step-content h3 {
+      font-size: 1.25rem;
+      margin-bottom: 0.5rem;
+      color: #ffffff;
+      font-weight: 600;
+    }
+    
+    .step-content p {
+      color: #a1a1aa;
+      line-height: 1.7;
+    }
+    
+    footer {
+      padding: 3rem 0;
+      border-top: 1px solid #27272a;
+      text-align: center;
+      color: #71717a;
+      background: #0a0a0a;
+    }
+    
+    footer a {
+      color: #f59e0b;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    
+    footer a:hover {
+      text-decoration: underline;
+    }
+    
+    @media (max-width: 768px) {
+      .hero h1 {
+        font-size: 2.5rem;
+      }
+      
+      .cta-buttons {
+        flex-direction: column;
+      }
+      
+      .btn {
+        width: 100%;
+        justify-content: center;
+      }
+      
+      nav {
+        display: none;
+      }
+      
+      .feature-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container">
+      <div class="header-content">
+        <div class="logo">
+          <img src="./logo.png" alt="Zync Wallet">
+          <span>Zync Wallet</span>
+        </div>
+        <nav>
+          <a href="#features">Features</a>
+          <a href="#install">Install</a>
+          <a href="https://docs.zyncwallet.xyz" target="_blank">Docs</a>
+          <a href="https://twitter.com/0xShinno" target="_blank">Twitter</a>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="container">
+      <h1>Your Gateway to Zinc Protocol</h1>
+      <p>The first browser extension wallet for Zcash that supports ZRC-20 tokens, NFTs, and seamless dApp integration.</p>
+      <div class="cta-buttons">
+        <a href="#install" class="btn btn-primary">
+          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+          </svg>
+          Download Wallet
+        </a>
+        <a href="https://docs.zyncwallet.xyz" class="btn btn-secondary" target="_blank">
+          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+          </svg>
+          Developer Docs
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <section id="features" class="features">
+    <div class="container">
+      <h2>Built for Zcash Ecosystem</h2>
+      <div class="feature-grid">
+        <div class="feature-card">
+          <h3>Secure & Private</h3>
+          <p>Your keys are encrypted and stored locally. We never see or store your private information.</p>
+        </div>
+        <div class="feature-card">
+          <h3>ZRC-20 Tokens</h3>
+          <p>Deploy, mint, and transfer fungible tokens on Zinc Protocol with full wallet support.</p>
+        </div>
+        <div class="feature-card">
+          <h3>NFTs & Inscriptions</h3>
+          <p>Create NFT collections, mint unique digital assets, and inscribe data on-chain with Zerdinals.</p>
+        </div>
+        <div class="feature-card">
+          <h3>dApp Integration</h3>
+          <p>Seamlessly connect to Zcash dApps with full Web3 provider support and event listeners.</p>
+        </div>
+        <div class="feature-card">
+          <h3>Lightning Fast</h3>
+          <p>Optimized performance with instant transaction signing and real-time balance updates.</p>
+        </div>
+        <div class="feature-card">
+          <h3>Testnet Support</h3>
+          <p>Switch between mainnet and testnet for safe development and testing of your dApps.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="install" class="installation">
+    <div class="container">
+      <h2>Easy Installation</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-number">1</div>
+          <div class="step-content">
+            <h3>Download Extension</h3>
+            <p>Download the latest zync-wallet.zip file from the button below.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-number">2</div>
+          <div class="step-content">
+            <h3>Extract Files</h3>
+            <p>Unzip the downloaded file to a location on your computer.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-number">3</div>
+          <div class="step-content">
+            <h3>Enable Developer Mode</h3>
+            <p>Open Chrome, go to Extensions, and enable Developer mode (top right toggle).</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-number">4</div>
+          <div class="step-content">
+            <h3>Load Extension</h3>
+            <p>Click Load unpacked and select the extracted dist folder.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-number">5</div>
+          <div class="step-content">
+            <h3>Start Using Zync</h3>
+            <p>Click the extension icon, create or import a wallet, and start managing your Zcash assets.</p>
+          </div>
+        </div>
+      </div>
+      <div style="text-align: center; margin-top: 3rem;">
+        <a href="./zync-wallet.zip" class="btn btn-primary" download>
+          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+          </svg>
+          Download Zync Wallet
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="container">
+      <p>&copy; 2024 Zync Wallet. Built for the Zcash community.</p>
+      <p style="margin-top: 0.5rem;">
+        <a href="https://twitter.com/0xShinno" target="_blank">Twitter</a> | 
+        <a href="https://github.com/zyncwallet" target="_blank">GitHub</a> | 
+        <a href="https://docs.zyncwallet.xyz" target="_blank">Documentation</a>
+      </p>
+    </div>
+  </footer>
+</body>
+</html>

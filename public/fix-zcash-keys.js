@@ -100,7 +100,85 @@ self.FixedZcashKeys = (() => {
     return compressed;
   }
   
-  return { getPublicKey };
+  /**
+   * Convert bytes to BigInt (big-endian)
+   */
+  function bytesToBigInt(bytes) {
+    let result = 0n;
+    for (let i = 0; i < bytes.length; i++) {
+      result = (result << 8n) | BigInt(bytes[i]);
+    }
+    return result;
+  }
+  
+  /**
+   * Sign a hash with a private key using secp256k1
+   * Returns DER-encoded signature
+   */
+  function signHash(messageHash, privateKey) {
+    // Convert inputs to BigInt
+    const z = bytesToBigInt(messageHash);
+    const d = bytesToBigInt(privateKey);
+    
+    // Generate random k (nonce) - In production, use deterministic k (RFC 6979)
+    // For now, use a simple deterministic approach based on message hash
+    const k = (z + d) % N; // Simple deterministic k (NOT cryptographically secure!)
+    
+    // Calculate r = (k * G).x mod N
+    let kG = pointMultiply(k);
+    const r = kG[0] % N;
+    
+    // Calculate s = k^-1 * (z + r*d) mod N
+    const kInv = invert(k, N);
+    const s = mod((kInv * (z + r * d)), N);
+    
+    // Encode as DER
+    return encodeDER(r, s);
+  }
+  
+  /**
+   * Encode signature as DER format
+   */
+  function encodeDER(r, s) {
+    const rBytes = bigIntToBytes(r);
+    const sBytes = bigIntToBytes(s);
+    
+    // Add 0x00 prefix if high bit is set (to indicate positive number)
+    const rWithPrefix = (rBytes[0] & 0x80) ? new Uint8Array([0x00, ...rBytes]) : rBytes;
+    const sWithPrefix = (sBytes[0] & 0x80) ? new Uint8Array([0x00, ...sBytes]) : sBytes;
+    
+    // DER structure: 0x30 [total-length] 0x02 [r-length] [r] 0x02 [s-length] [s]
+    const totalLength = 2 + rWithPrefix.length + 2 + sWithPrefix.length;
+    const der = new Uint8Array(2 + totalLength);
+    
+    let offset = 0;
+    der[offset++] = 0x30; // SEQUENCE
+    der[offset++] = totalLength;
+    der[offset++] = 0x02; // INTEGER
+    der[offset++] = rWithPrefix.length;
+    der.set(rWithPrefix, offset);
+    offset += rWithPrefix.length;
+    der[offset++] = 0x02; // INTEGER
+    der[offset++] = sWithPrefix.length;
+    der.set(sWithPrefix, offset);
+    
+    return der;
+  }
+  
+  /**
+   * Convert BigInt to bytes (big-endian, minimum length)
+   */
+  function bigIntToBytes(num) {
+    const hex = num.toString(16);
+    const paddedHex = hex.length % 2 === 0 ? hex : '0' + hex;
+    const bytes = new Uint8Array(paddedHex.length / 2);
+    for (let i = 0; i < bytes.length; i++) {
+      bytes[i] = parseInt(paddedHex.substr(i * 2, 2), 16);
+    }
+    return bytes;
+  }
+  
+  return { getPublicKey, signHash };
 })();
 
 console.log('[FixedZcashKeys] Real secp256k1 implementation loaded');

@@ -92,6 +92,7 @@
       <button onclick="connect()">Connect Wallet</button>
       <button onclick="disconnect()">Disconnect</button>
       <button onclick="getBalance()">Get Balance</button>
+      <button onclick="signMessage()">Sign Message</button>
       <button onclick="sendZec()">Send ZEC</button>
       <button onclick="deployToken()">Deploy ZRC-20</button>
       <button onclick="mintToken()">Mint ZRC-20</button>
@@ -179,6 +180,22 @@
       }
     }
     
+    async function signMessage() {
+      try {
+        // Use default message - no prompt needed
+        const message = 'Login to Test dApp at ' + new Date().toISOString();
+        
+        log(`✍️ Requesting signature for message: "${message}"`, 'info');
+        const result = await window.zyncwallet.signMessage(message);
+        log(`✅ Message signed!`, 'success');
+        log(`Address: ${result.address}`, 'info');
+        log(`Signature: ${result.signature}`, 'info');
+        log(`Message: ${result.message}`, 'info');
+      } catch (error) {
+        log(`❌ Sign message failed: ${error.message}`, 'error');
+      }
+    }
+    
     async function sendZec() {
       try {
         const to = prompt('Enter recipient address:');
@@ -256,6 +273,33 @@
       } catch (error) {
         log(`❌ Inscribe failed: ${error.message}`, 'error');
       }
+    }
+    
+    // Set up event listeners
+    if (window.zyncwallet) {
+      log('📡 Setting up event listeners...', 'info');
+      
+      window.zyncwallet.on('accountsChanged', ({ address }) => {
+        log(`🔄 Account changed: ${address}`, 'info');
+        currentAddress = address;
+        document.getElementById('address').textContent = address;
+      });
+      
+      window.zyncwallet.on('networkChanged', ({ network }) => {
+        log(`🌐 Network changed: ${network}`, 'info');
+        document.getElementById('network').textContent = network;
+      });
+      
+      window.zyncwallet.on('disconnect', () => {
+        log('🔌 Wallet disconnected', 'info');
+        isConnected = false;
+        currentAddress = null;
+        updateStatus();
+        document.getElementById('balance').textContent = '-';
+        document.getElementById('network').textContent = '-';
+      });
+      
+      log('✅ Event listeners registered', 'success');
     }
   </script>
 </body>

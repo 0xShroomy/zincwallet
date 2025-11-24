@@ -135,7 +135,7 @@ function App() {
     if (pendingApproval.type === 'connect') {
       return <ConnectApprovalPage />;
     }
-    if (pendingApproval.type === 'transaction') {
+    if (pendingApproval.type === 'transaction' || pendingApproval.type === 'signature') {
       return <TransactionApprovalPage />;
     }
   }

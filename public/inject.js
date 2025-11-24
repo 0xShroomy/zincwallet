@@ -251,9 +251,21 @@
       return sendMessageToExtension('inscribe', { contentType, content });
     },
     
+    // Signature methods
+    async signMessage(message) {
+      if (!isConnected) {
+        throw new Error('Not connected. Call connect() first.');
+      }
+      return sendMessageToExtension('signMessage', { message });
+    },
+    
     // Event methods
     on(event, callback) {
       emitter.on(event, callback);
+    },
+    
+    off(event, callback) {
+      emitter.removeListener(event, callback);
     },
     
     removeListener(event, callback) {
