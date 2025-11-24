@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Developer Guide - Zync Wallet</title>
+<link rel="icon" href="./logo.png">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}html,body{overflow-x:hidden;width:100%}body{font-family:'Inter',sans-serif;background:#000;color:#e4e4e7;line-height:1.7;padding-top:80px}.container{max-width:1200px;margin:0 auto;padding:0 1.5rem}header{padding:1.5rem 0;border-bottom:1px solid rgba(245,158,11,0.1);background:rgba(10,10,10,0.95);backdrop-filter:blur(10px);position:fixed;top:0;left:0;right:0;z-index:100}.header-content{display:flex;justify-content:space-between;align-items:center}.logo{display:flex;align-items:center;gap:0.75rem;font-size:1.1rem;font-weight:700;color:#f59e0b;text-decoration:none}.logo img{width:32px;height:32px;border-radius:8px}nav{display:flex;gap:1.5rem}nav a{color:#a1a1aa;text-decoration:none;font-weight:500;font-size:0.9rem;transition:color 0.3s;white-space:nowrap}nav a:hover{color:#f59e0b}.menu-btn{display:none;background:none;border:none;color:#f59e0b;cursor:pointer;padding:0.5rem}.menu-btn svg{width:28px;height:28px}@media(max-width:768px){nav{display:none}.menu-btn{display:block}}.fullscreen-menu{position:fixed;top:0;left:0;width:100%;height:100vh;background:rgba(0,0,0,0.98);backdrop-filter:blur(10px);z-index:200;display:none;align-items:center;justify-content:center}.fullscreen-menu.open{display:flex}.menu-content{text-align:center}.menu-close{position:absolute;top:2rem;right:2rem;background:none;border:none;color:#f59e0b;cursor:pointer}.menu-close svg{width:32px;height:32px}.menu-links{display:flex;flex-direction:column;gap:2rem}.menu-links a{color:#fff;text-decoration:none;font-size:clamp(1.5rem,5vw,2rem);font-weight:700;transition:all 0.3s}.menu-links a:hover{color:#f59e0b;transform:scale(1.1)}.main{padding:3rem 1.5rem;max-width:900px;margin:0 auto}h1{font-size:clamp(2rem,6vw,3rem);font-weight:900;margin-bottom:1rem}h2{font-size:clamp(1.5rem,4vw,2rem);font-weight:800;margin-top:3rem;margin-bottom:1rem;padding-bottom:0.5rem;border-bottom:2px solid rgba(245,158,11,0.2)}h3{font-size:1.4rem;color:#f59e0b;margin-top:2rem;margin-bottom:1rem;font-weight:700}p{margin-bottom:1rem;color:#d4d4d8;font-size:1.05rem}code{background:#121212;padding:0.25rem 0.5rem;border-radius:0.375rem;font-family:'JetBrains Mono',monospace;font-size:0.9em;color:#f59e0b}pre{background:#0a0a0a;padding:1.5rem;border-radius:0.75rem;overflow-x:auto;margin:1.5rem 0;border:1px solid rgba(245,158,11,0.2)}pre code{background:none;padding:0;color:#d4d4d8;font-size:0.95rem}.download-box{background:linear-gradient(135deg,rgba(245,158,11,0.1),rgba(217,119,6,0.1));border:2px solid rgba(245,158,11,0.3);border-radius:1rem;padding:2rem;margin:2rem 0}.download-box h3{margin-top:0;color:#f59e0b}.btn{display:inline-flex;align-items:center;gap:0.75rem;padding:0.875rem 1.75rem;background:linear-gradient(135deg,#f59e0b,#d97706);color:#000;text-decoration:none;border-radius:0.75rem;font-weight:700;transition:all 0.3s;margin-top:1rem}.btn:hover{transform:translateY(-3px)}ul{margin-left:1.5rem;margin-bottom:1.5rem}li{margin-bottom:0.75rem}.note{background:rgba(245,158,11,0.1);border-left:4px solid #f59e0b;padding:1.25rem 1.5rem;margin:1.5rem 0;border-radius:0.5rem}.note strong{color:#f59e0b}footer{padding:2.5rem 0;border-top:1px solid rgba(245,158,11,0.1);text-align:center;color:#71717a;background:#0a0a0a}footer a{color:#f59e0b;text-decoration:none}
+</style>
+</head>
+<body>
+<header><div class="container"><div class="header-content"><a href="./" class="logo"><img src="./logo.png" alt="Zync"><span>Zync Docs</span></a><nav><a href="./user-guide.html">User Guide</a><a href="./developer-guide.html">Developer Guide</a><a href="https://zyncwallet.xyz">Website</a></nav><button class="menu-btn" onclick="document.getElementById('menu').classList.add('open')"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg></button></div></div></header>
+<div class="fullscreen-menu" id="menu"><button class="menu-close" onclick="document.getElementById('menu').classList.remove('open')"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button><div class="menu-content"><div class="menu-links"><a href="./">Overview</a><a href="./user-guide.html">User Guide</a><a href="./developer-guide.html">Developer Guide</a><a href="https://zyncwallet.xyz">Website</a><a href="https://twitter.com/0xShinno" target="_blank">Twitter</a></div></div></div>
+<main class="main">
+<h1>Developer Guide</h1>
+<p style="font-size:1.25rem;color:#a1a1aa;margin-bottom:3rem">Integrate Zync Wallet into your dApp</p>
+<div class="download-box"><h3>TypeScript Definitions</h3><p>Download for full IntelliSense support:</p><a href="./zyncwallet.d.ts" class="btn" download>Download zyncwallet.d.ts</a><p style="margin-top:1rem;font-size:0.95rem;color:#a1a1aa">Place in: <code>src/types/zyncwallet.d.ts</code></p></div>
+<h2>Installation</h2>
+<p><strong>No npm package needed!</strong> Zync Wallet injects <code>window.zyncwallet</code> automatically.</p>
+<h2>Quick Start</h2>
+<pre><code>// Check if installed
+if (window.zyncwallet) {
+  const result = await window.zyncwallet.connect();
+  console.log('Connected:', result.address);
+} else {
+  console.log('Install Zync Wallet');
+}</code></pre>
+<h2>Core Methods</h2>
+<h3>connect()</h3>
+<pre><code>const result = await window.zyncwallet.connect();
+// { address: "t1...", network: "mainnet", connected: true }</code></pre>
+<h3>getBalance()</h3>
+<pre><code>const result = await window.zyncwallet.getBalance();
+// { balance: 1685775, balanceZec: "0.01685775" }</code></pre>
+<h3>sendZec()</h3>
+<pre><code>await window.zyncwallet.sendZec({
+  to: 't1...',
+  amount: 0.001
+});</code></pre>
+<h2>Zinc Protocol (ZRC-20)</h2>
+<h3>Deploy Token</h3>
+<pre><code>await window.zyncwallet.deployZrc20({
+  tick: 'TEST',
+  max: 21000000,
+  limit: 1000,
+  decimals: 8
+});</code></pre>
+<h3>Mint & Transfer</h3>
+<pre><code>await window.zyncwallet.mintZrc20({
+  deployTxid: 'abc...',
+  amount: 100
+});
+
+await window.zyncwallet.transferZrc20({
+  deployTxid: 'abc...',
+  amount: 50,
+  to: 't1...'
+});</code></pre>
+<h2>Zerdinals Protocol</h2>
+<h3>Inscribe Data</h3>
+<pre><code>await window.zyncwallet.inscribe({
+  content: 'Hello Zcash!',
+  mimeType: 'text/plain'
+});</code></pre>
+<h3>Mint NFT</h3>
+<pre><code>await window.zyncwallet.mintNft({
+  collectionTxid: 'abc...',
+  content: '<svg>...</svg>',
+  mimeType: 'image/svg+xml'
+});</code></pre>
+<h2>Event Listeners</h2>
+<pre><code>window.zyncwallet.on('accountsChanged', ({ address }) => {
+  console.log('Switched:', address);
+});
+
+window.zyncwallet.on('networkChanged', ({ network }) => {
+  console.log('Network:', network);
+});
+
+window.zyncwallet.on('disconnect', () => {
+  console.log('Disconnected');
+});</code></pre>
+<h2>Error Handling</h2>
+<pre><code>try {
+  await window.zyncwallet.connect();
+} catch (error) {
+  console.error(error.message);
+}</code></pre>
+<h2>Best Practices</h2>
+<ul><li>Always check <code>window.zyncwallet</code> exists</li><li>Handle user rejections gracefully</li><li>Listen to events for state changes</li><li>Check network (mainnet vs testnet)</li><li>Test on testnet first</li></ul>
+</main>
+<footer><div class="container"><p>&copy; 2025 Zync Wallet</p></div></footer>
+</body>
+</html>
