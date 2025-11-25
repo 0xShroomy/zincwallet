@@ -818,7 +818,10 @@ async function handleGetWallets() {
       name: w.name,
       address: w.address,
       createdAt: w.createdAt,
-      imported: w.imported || false
+      imported: w.imported || false,
+      importMethod: w.importMethod, // Include import method for export UI
+      coinType: w.coinType, // Include coin type for fallback detection
+      derivationPath: w.derivationPath // Include derivation path for fallback detection
     })),
     activeWalletId
   };

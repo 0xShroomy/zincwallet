@@ -9,6 +9,9 @@ interface Wallet {
   address: string;
   createdAt: number;
   imported?: boolean;
+  importMethod?: 'privateKey' | 'phrase';
+  coinType?: number | null;
+  derivationPath?: string;
 }
 
 interface Props {
@@ -49,6 +52,7 @@ export default function WalletSwitcher({ onClose, onUpdate }: Props) {
       });
 
       if (response.success) {
+        console.log('[WalletSwitcher] Loaded wallets:', response.wallets);
         setWallets(response.wallets);
         setActiveWalletId(response.activeWalletId);
       }
@@ -157,8 +161,25 @@ export default function WalletSwitcher({ onClose, onUpdate }: Props) {
 
   function startExport(wallet: Wallet, e: React.MouseEvent) {
     e.stopPropagation();
+    console.log('[WalletSwitcher] Exporting wallet:', wallet.name, 'importMethod:', wallet.importMethod);
     setExportingWalletId(wallet.id);
-    setExportType(null); // Reset to show choice screen
+    
+    // Detect if wallet was imported via private key
+    // Method 1: Check importMethod field (new wallets)
+    // Method 2: Fallback for old wallets - if coinType is null, it's a private key wallet
+    const isPrivateKeyWallet = wallet.importMethod === 'privateKey' || 
+                               wallet.coinType === null ||
+                               wallet.derivationPath === 'imported';
+    
+    // If wallet was imported via private key, skip choice and go straight to private key export
+    if (isPrivateKeyWallet) {
+      console.log('[WalletSwitcher] Private key wallet detected - skipping choice screen');
+      setExportType('privateKey');
+    } else {
+      console.log('[WalletSwitcher] Seed phrase wallet - showing choice screen');
+      setExportType(null); // Reset to show choice screen for seed phrase wallets
+    }
+    
     setExportPassword('');
     setExportError(null);
     setExportData(null);
@@ -615,9 +636,26 @@ export default function WalletSwitcher({ onClose, onUpdate }: Props) {
                   <button
                     type="button"
                     onClick={() => {
-                      setExportType(null);
-                      setExportPassword('');
-                      setExportError(null);
+                      // Check if this is a private key wallet
+                      const wallet = wallets.find(w => w.id === exportingWalletId);
+                      const isPrivateKeyWallet = wallet && (
+                        wallet.importMethod === 'privateKey' || 
+                        wallet.coinType === null ||
+                        wallet.derivationPath === 'imported'
+                      );
+                      
+                      if (isPrivateKeyWallet) {
+                        // Private key wallet: close modal entirely (never showed choice screen)
+                        setExportingWalletId(null);
+                        setExportType(null);
+                        setExportPassword('');
+                        setExportError(null);
+                      } else {
+                        // Seed phrase wallet: go back to choice screen
+                        setExportType(null);
+                        setExportPassword('');
+                        setExportError(null);
+                      }
                     }}
                     className="flex-1 btn btn-secondary"
                   >
