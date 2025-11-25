@@ -21,10 +21,17 @@ interface ApprovalRequest {
 export default function TransactionApprovalPage() {
   const [request, setRequest] = useState<ApprovalRequest | null>(null);
   const [loading, setLoading] = useState(true);
+  const [estimatedFee, setEstimatedFee] = useState<number>(0);
 
   useEffect(() => {
     loadApprovalRequest();
   }, []);
+
+  useEffect(() => {
+    if (request?.transaction && request.transaction.type === 'sendZec') {
+      estimateTransactionFee();
+    }
+  }, [request]);
 
   async function loadApprovalRequest() {
     try {
@@ -39,6 +46,30 @@ export default function TransactionApprovalPage() {
     } catch (error) {
       console.error('Failed to load approval request:', error);
       setLoading(false);
+    }
+  }
+
+  async function estimateTransactionFee() {
+    if (!request?.transaction) return;
+    
+    try {
+      const response = await browser.runtime.sendMessage({
+        type: 'WALLET_ACTION',
+        action: 'ESTIMATE_FEE',
+        data: {
+          to: request.transaction.params.to,
+          amountZec: request.transaction.params.amount || request.transaction.params.amountZec,
+        },
+      });
+
+      if (response.success && response.fees) {
+        // Use standard fee rate by default
+        setEstimatedFee(response.fees.standard.zatoshis);
+      }
+    } catch (error) {
+      console.error('Failed to estimate fee:', error);
+      // Fallback to rough estimate: 200 bytes * 2 zat/byte
+      setEstimatedFee(400);
     }
   }
 
@@ -204,7 +235,21 @@ export default function TransactionApprovalPage() {
             </div>
             <div className="flex justify-between">
               <span className="text-zinc-400">Network Fee</span>
-              <span className="text-white">~0.0001 ZEC</span>
+              <span className="text-white">
+                {estimatedFee > 0 
+                  ? `${(estimatedFee / 100000000).toFixed(8)} ZEC`
+                  : 'Calculating...'
+                }
+              </span>
+            </div>
+            <div className="flex justify-between font-medium pt-2 border-t border-zinc-700">
+              <span className="text-white">Total</span>
+              <span className="text-white">
+                {estimatedFee > 0
+                  ? `${(Number(params.amount) + (estimatedFee / 100000000)).toFixed(8)} ZEC`
+                  : `${params.amount} ZEC + fee`
+                }
+              </span>
             </div>
           </div>
         );

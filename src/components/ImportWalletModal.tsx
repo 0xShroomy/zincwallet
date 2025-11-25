@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import browser from 'webextension-polyfill';
+import PasswordStrength from './PasswordStrength';
 
 interface Props {
   onClose: () => void;
@@ -43,8 +44,8 @@ export default function ImportWalletModal({ onClose, onSuccess }: Props) {
   }
 
   async function handleImport() {
-    if (!password || password.length < 8) {
-      setError('Password must be at least 8 characters');
+    if (!password || password.length < 6) {
+      setError('Password must be at least 6 characters');
       return;
     }
 
@@ -248,7 +249,7 @@ export default function ImportWalletModal({ onClose, onSuccess }: Props) {
 
               <div>
                 <label className="block text-sm font-medium text-zinc-300 mb-2">
-                  Password
+                  Password (min. 6 characters)
                 </label>
                 <input
                   type="password"
@@ -258,6 +259,9 @@ export default function ImportWalletModal({ onClose, onSuccess }: Props) {
                   placeholder="Enter password"
                   autoFocus
                 />
+                <div className="mt-2">
+                  <PasswordStrength password={password} />
+                </div>
               </div>
 
               <div>

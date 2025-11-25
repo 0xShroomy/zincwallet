@@ -52,8 +52,8 @@ export default function ConnectApprovalPage() {
       // Clear approval from storage
       await browser.storage.local.remove('pendingApproval');
       
-      // Popup will auto-close or return to dashboard
-      window.location.reload();
+      // FIX: Use programmatic navigation instead of reload
+      window.location.href = '/src/popup/index.html';
     } catch (error) {
       console.error('Failed to approve:', error);
     }
@@ -75,8 +75,8 @@ export default function ConnectApprovalPage() {
       // Clear approval from storage
       await browser.storage.local.remove('pendingApproval');
       
-      // Popup will auto-close or return to dashboard
-      window.location.reload();
+      // FIX: Use programmatic navigation instead of reload
+      window.location.href = '/src/popup/index.html';
     } catch (error) {
       console.error('Failed to reject:', error);
     }

@@ -126,6 +126,39 @@ let walletState = {
   network: 'mainnet' // Will be loaded from storage on init
 };
 
+// FEE CONFIGURATION
+// ============================================================================
+
+// Fee rates in zatoshis per byte
+const FEE_RATES = {
+  slow: 1,      // ~10-15 minutes, cheapest
+  standard: 2,  // ~5-10 minutes, recommended
+  fast: 5       // ~2-5 minutes, priority
+};
+
+/**
+ * Calculate transaction fee based on inputs/outputs
+ */
+function calculateTransactionFee(inputCount, outputCount, feeRate) {
+  // Zcash transaction size estimation:
+  // Base: 10 bytes (version, locktime, etc.)
+  // Per input: ~150 bytes (prevout, scriptsig, sequence)
+  // Per output: ~34 bytes (value, scriptpubkey)
+  const estimatedSize = 10 + (inputCount * 150) + (outputCount * 34);
+  const feeInZatoshis = Math.ceil(estimatedSize * feeRate);
+  
+  console.log('[Background] Fee calculation:', {
+    inputs: inputCount,
+    outputs: outputCount,
+    estimatedSize,
+    feeRate,
+    feeInZatoshis,
+    feeInZEC: (feeInZatoshis / 100000000).toFixed(8)
+  });
+  
+  return feeInZatoshis;
+}
+
 // ===========================================================================
 // MULTI-WALLET MANAGEMENT
 // ===========================================================================
@@ -181,7 +214,7 @@ async function getActiveWallet() {
  * Initialize wallet state from storage
  */
 async function initWalletState() {
-  const { wallets, activeWalletId } = await getAllWallets();
+  let { wallets, activeWalletId } = await getAllWallets();
   
   // Also check legacy single wallet storage for backwards compatibility
   const legacy = await chrome.storage.local.get(['encryptedSeed']);
@@ -200,6 +233,11 @@ async function initWalletState() {
       activeWalletId: walletId
     });
     await chrome.storage.local.remove(['encryptedSeed']);
+    
+    // CRITICAL FIX: Reload wallets after migration
+    const reloaded = await getAllWallets();
+    wallets = reloaded.wallets;
+    activeWalletId = reloaded.activeWalletId;
   }
   
   walletState.isInitialized = wallets.length > 0;
@@ -251,8 +289,8 @@ async function handleCreateWallet(data) {
   try {
     const { password, name } = data;
     
-    if (!password || password.length < 8) {
-      throw new Error('Password must be at least 8 characters');
+    if (!password || password.length < 6) {
+      throw new Error('Password must be at least 6 characters. Please choose a longer password.');
     }
     
     // Generate mnemonic
@@ -343,7 +381,7 @@ async function handleUnlockWallet(data) {
     const decrypted = await decryptMnemonic(wallet.encryptedSeed, password);
 
     if (!decrypted) {
-      throw new Error('Failed to decrypt wallet. Wrong password?');
+      throw new Error('Incorrect password. Please try again.');
     }
 
     let address, privateKeyHex;
@@ -413,6 +451,20 @@ async function handleUnlockWallet(data) {
       cachedMnemonic: wallet.importMethod === 'privateKey' ? null : decrypted,
       cachedPrivateKey: privateKeyHex,
     });
+    
+    // FIX: Validate and update wallet address in storage
+    if (wallet.address && wallet.address !== address) {
+      console.warn('[Background] ⚠️ Address mismatch detected!');
+      console.warn('[Background] Stored:', wallet.address);
+      console.warn('[Background] Derived:', address);
+      console.warn('[Background] Using newly derived address for security');
+    }
+    
+    if (!wallet.address || wallet.address !== address) {
+      console.log('[Background] Updating wallet address in storage:', address);
+      wallet.address = address;
+      await saveWallet(wallet);
+    }
 
     console.log('[Background] Wallet unlocked successfully:', wallet.name);
     
@@ -515,8 +567,8 @@ async function handleImportWallet(data) {
   try {
     const { method, mnemonic, privateKey, password, name } = data;
     
-    if (!password || password.length < 8) {
-      throw new Error('Password must be at least 8 characters');
+    if (!password || password.length < 6) {
+      throw new Error('Password must be at least 6 characters. Please choose a longer password.');
     }
     
     let address, derivationPath, encryptedSeed, finalCoinType, privateKeyHex;
@@ -524,20 +576,37 @@ async function handleImportWallet(data) {
     // Handle different import methods
     if (method === 'phrase' && mnemonic) {
       // Seed phrase import
-      const wordCount = mnemonic.trim().split(/\s+/).length;
+      const seedPhrase = mnemonic.trim();
+      const wordCount = seedPhrase.split(/\s+/).length;
+      
+      // VALIDATION: Check word count
       if (wordCount !== 12 && wordCount !== 24) {
-        throw new Error('Invalid mnemonic - must be 12 or 24 words');
+        throw new Error('Invalid seed phrase. Must be exactly 12 or 24 words.');
       }
       
-      const seedPhrase = mnemonic.trim();
-      
-      // Encrypt seed
-      encryptedSeed = await encrypt(seedPhrase, password);
-      
-      // Both Zinc and Zerdinals use coin type 133 (Zcash mainnet standard)
-      // The test confirmed this is the correct path: m/44'/133'/0'/0/0
+      // VALIDATION: Try to derive address to ensure phrase is valid
       finalCoinType = 133;
-      const result = await self.ZcashKeys.deriveAddress(seedPhrase, 0, 0, finalCoinType);
+      let result;
+      try {
+        result = await self.ZcashKeys.deriveAddress(seedPhrase, 0, 0, finalCoinType);
+        
+        if (!result || !result.address) {
+          throw new Error('Failed to derive address from seed phrase');
+        }
+        
+        // Validate it's a valid Zcash address
+        if (!result.address.startsWith('t1')) {
+          throw new Error('Invalid Zcash address derived. Expected t-address.');
+        }
+        
+        console.log('[Background] ✓ Seed phrase validated successfully');
+      } catch (validationError) {
+        console.error('[Background] Seed phrase validation failed:', validationError);
+        throw new Error('Invalid seed phrase. Please check your words and try again.');
+      }
+      
+      // Encrypt seed (only after successful validation)
+      encryptedSeed = await encrypt(seedPhrase, password);
       
       address = result.address;
       derivationPath = result.derivationPath;
@@ -550,8 +619,30 @@ async function handleImportWallet(data) {
       // Private key import
       const trimmedKey = privateKey.trim();
       
-      // Import from WIF private key
-      const result = await self.ZcashKeys.importFromPrivateKey(trimmedKey);
+      // VALIDATION: Check private key format before proceeding
+      if (trimmedKey.length < 50 || trimmedKey.length > 52) {
+        throw new Error('Invalid private key length. Expected 51-52 characters (WIF format).');
+      }
+      
+      // VALIDATION: Try to import and validate address
+      let result;
+      try {
+        result = await self.ZcashKeys.importFromPrivateKey(trimmedKey);
+        
+        if (!result || !result.address) {
+          throw new Error('Failed to derive address from private key');
+        }
+        
+        // Validate it's a valid Zcash t-address
+        if (!result.address.startsWith('t1')) {
+          throw new Error('Invalid Zcash address derived. Expected t-address starting with t1');
+        }
+        
+        console.log('[Background] ✓ Private key validated successfully');
+      } catch (validationError) {
+        console.error('[Background] Private key validation failed:', validationError);
+        throw new Error('Invalid private key format. Please check your key and try again.');
+      }
       
       address = result.address;
       privateKeyHex = result.privateKey;
@@ -621,6 +712,20 @@ async function handleImportWallet(data) {
 }
 
 async function handleGetState() {
+  // CRITICAL FIX: Always check storage to ensure accurate isInitialized state
+  // This prevents race conditions where GET_STATE is called before initWalletState() completes
+  const { wallets } = await getAllWallets();
+  const hasWallets = wallets && wallets.length > 0;
+  
+  // Update isInitialized if it doesn't match storage reality
+  if (hasWallets && !walletState.isInitialized) {
+    console.log('[Background] GET_STATE: Correcting isInitialized from false to true');
+    walletState.isInitialized = true;
+  } else if (!hasWallets && walletState.isInitialized) {
+    console.log('[Background] GET_STATE: Correcting isInitialized from true to false');
+    walletState.isInitialized = false;
+  }
+  
   return { ...walletState };
 }
 
@@ -728,21 +833,25 @@ const inFlightRequests = new Map(); // Track ongoing requests
 
 async function handleGetTransactions(data) {
   try {
-    const { address } = data;
+    const { address, limit = 50, offset = 0 } = data;
     
     if (!address) {
       throw new Error('Address is required');
     }
 
-    // Check cache first
-    const cached = apiCache.transactions.get(address);
-    if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
-      console.log('[Background] Returning cached transactions for:', address);
-      return cached.data;
+    // For paginated requests, skip cache
+    const cacheKey = `${address}_${offset}`;
+    if (offset === 0) {
+      // Check cache only for first page
+      const cached = apiCache.transactions.get(address);
+      if (cached && (Date.now() - cached.timestamp < CACHE_TTL)) {
+        console.log('[Background] Using cached transactions');
+        return cached.data;
+      }
     }
 
     // Check if request is already in flight
-    const inFlight = inFlightRequests.get(`tx_${address}`);
+    const inFlight = inFlightRequests.get(`tx_${cacheKey}`);
     if (inFlight) {
       console.log('[Background] Request already in flight, waiting...');
       return await inFlight;
@@ -754,7 +863,7 @@ async function handleGetTransactions(data) {
     const requestPromise = (async () => {
       try {
         
-        const proxyUrl = `https://vercel-proxy-loghorizon.vercel.app/api/transactions?address=${address}&network=${walletState.network}&limit=50`;
+        const proxyUrl = `https://vercel-proxy-loghorizon.vercel.app/api/transactions?address=${address}&network=${walletState.network}&limit=${limit}&offset=${offset}`;
         
         console.log('[Background] Querying proxy:', proxyUrl);
         
@@ -808,14 +917,14 @@ async function handleGetTransactions(data) {
     })();
 
     // Track in-flight request
-    inFlightRequests.set(`tx_${address}`, requestPromise);
+    inFlightRequests.set(`tx_${cacheKey}`, requestPromise);
 
     try {
       const result = await requestPromise;
       return result;
     } finally {
       // Clean up in-flight tracking
-      inFlightRequests.delete(`tx_${address}`);
+      inFlightRequests.delete(`tx_${cacheKey}`);
     }
   } catch (error) {
     console.error('[Background] Failed to fetch transactions:', error);
@@ -1366,14 +1475,57 @@ async function handleSwitchWallet(data) {
     }
     
     // Decrypt and verify password
-    const mnemonic = await decryptMnemonic(wallet.encryptedSeed, password);
-    if (!mnemonic) {
+    const decrypted = await decryptMnemonic(wallet.encryptedSeed, password);
+    if (!decrypted) {
       throw new Error('Invalid password');
     }
     
-    // Derive keys using stored coin type
-    const coinType = wallet.coinType !== undefined ? wallet.coinType : 133;
-    const { address, privateKey } = await self.ZcashKeys.deriveAddress(mnemonic, 0, 0, coinType);
+    let address, privateKey;
+    
+    // CRITICAL FIX: Handle private key imports differently
+    if (wallet.importMethod === 'privateKey') {
+      console.log('[Background] Switching to private key wallet:', wallet.name);
+      
+      // decrypted contains the private key hex, need to derive address
+      const publicKey = await self.ZcashKeys.getPublicKey(new Uint8Array(decrypted.match(/.{1,2}/g).map(byte => parseInt(byte, 16))));
+      
+      // Hash public key
+      const sha256 = await crypto.subtle.digest('SHA-256', publicKey);
+      const sha256Hex = Array.from(new Uint8Array(sha256)).map(b => b.toString(16).padStart(2, '0')).join('');
+      const ripemd160 = CryptoJS.RIPEMD160(CryptoJS.enc.Hex.parse(sha256Hex));
+      const pubKeyHash = new Uint8Array(20);
+      for (let i = 0; i < 5; i++) {
+        pubKeyHash[i * 4] = (ripemd160.words[i] >>> 24) & 0xff;
+        pubKeyHash[i * 4 + 1] = (ripemd160.words[i] >>> 16) & 0xff;
+        pubKeyHash[i * 4 + 2] = (ripemd160.words[i] >>> 8) & 0xff;
+        pubKeyHash[i * 4 + 3] = ripemd160.words[i] & 0xff;
+      }
+      
+      // Build address
+      const ZCASH_PREFIX = 0x1cb8;
+      const payload = new Uint8Array(22);
+      payload[0] = (ZCASH_PREFIX >> 8) & 0xff;
+      payload[1] = ZCASH_PREFIX & 0xff;
+      payload.set(pubKeyHash, 2);
+      
+      // Base58 encode
+      address = await self.ZcashKeys.base58Encode(payload);
+      privateKey = decrypted;
+      
+      console.log('[Background] Address derived from private key:', address);
+    } else {
+      // Normal seed phrase wallet
+      console.log('[Background] Switching to mnemonic wallet:', wallet.name);
+      
+      // Derive keys using stored coin type
+      const coinType = wallet.coinType !== undefined ? wallet.coinType : 133;
+      const derived = await self.ZcashKeys.deriveAddress(decrypted, 0, 0, coinType);
+      
+      address = derived.address;
+      privateKey = derived.privateKey;
+      
+      console.log('[Background] Address derived from mnemonic:', address);
+    }
     
     // Set as active
     await setActiveWallet(walletId);
@@ -1389,9 +1541,23 @@ async function handleSwitchWallet(data) {
       walletAddress: address,
       unlockTime: Date.now(),
       activeWalletId: walletId,
-      cachedMnemonic: mnemonic,
+      cachedMnemonic: wallet.importMethod === 'privateKey' ? null : decrypted,
       cachedPrivateKey: privateKey
     });
+    
+    // FIX: Validate and update wallet address in storage
+    if (wallet.address && wallet.address !== address) {
+      console.warn('[Background] ⚠️ Address mismatch detected during switch!');
+      console.warn('[Background] Stored:', wallet.address);
+      console.warn('[Background] Derived:', address);
+      console.warn('[Background] Using newly derived address for security');
+    }
+    
+    if (!wallet.address || wallet.address !== address) {
+      console.log('[Background] Updating wallet address in storage:', address);
+      wallet.address = address;
+      await saveWallet(wallet);
+    }
     
     console.log('[Background] Switched to wallet:', wallet.name);
     
@@ -1574,6 +1740,64 @@ async function handleDeleteWallet(data) {
   }
 }
 
+async function handleExportWallet(data) {
+  try {
+    const { walletId, password, exportType } = data; // exportType: 'seedPhrase' | 'privateKey'
+    
+    const { wallets } = await getAllWallets();
+    const wallet = wallets.find(w => w.id === walletId);
+    
+    if (!wallet) {
+      throw new Error('Wallet not found');
+    }
+    
+    // Verify password by decrypting
+    const decrypted = await decryptMnemonic(wallet.encryptedSeed, password);
+    if (!decrypted) {
+      throw new Error('Invalid password');
+    }
+    
+    let mnemonic = null;
+    let privateKey = null;
+    
+    // Check if wallet was imported via private key
+    if (wallet.importMethod === 'privateKey') {
+      // decrypted IS the private key (hex format)
+      if (exportType === 'privateKey') {
+        privateKey = decrypted;
+      } else {
+        // Cannot export seed phrase from private key wallet
+        throw new Error('This wallet was imported using a private key. Seed phrase is not available.');
+      }
+    } else {
+      // Wallet was created from mnemonic
+      if (exportType === 'seedPhrase') {
+        mnemonic = decrypted;
+      } else if (exportType === 'privateKey') {
+        // Derive private key from mnemonic
+        const coinType = wallet.coinType !== undefined ? wallet.coinType : 133;
+        const derived = await self.ZcashKeys.deriveAddress(decrypted, 0, 0, coinType);
+        privateKey = derived.privateKey;
+      }
+    }
+    
+    console.log('[Background] Wallet exported:', wallet.name, 'Type:', exportType);
+    
+    return {
+      success: true,
+      mnemonic,
+      privateKey,
+      walletImportMethod: wallet.importMethod || 'phrase' // Tell UI how wallet was created
+    };
+  } catch (error) {
+    console.error('[Background] Wallet export failed:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
 async function handleRefreshBalance() {
   try {
     if (!walletState.address) {
@@ -1587,6 +1811,13 @@ async function handleRefreshBalance() {
     
     // Update wallet state with real balance
     walletState.balance = result.balance;
+    
+    // IMPORTANT: Save to storage so UI gets notified of balance change
+    await chrome.storage.local.set({ 
+      walletState: { 
+        ...walletState 
+      } 
+    });
     
     console.log('[Background] Balance updated:', {
       balance: result.balance,
@@ -1625,7 +1856,7 @@ async function handleInscription(data) {
     console.log('[Background] INSCRIPTION:', { type, payload });
     
     if (!walletState.address) {
-      throw new Error('Wallet is locked');
+      throw new Error('Your wallet is locked. Please unlock it first.');
     }
     
     // Get cached private key from session
@@ -1777,28 +2008,98 @@ async function handleInscription(data) {
   }
 }
 
-async function handleSendZec(data) {
+/**
+ * Estimate transaction fees for different speed options
+ */
+async function handleEstimateFee(data) {
   try {
     const { to, amountZec } = data;
+    
+    if (!walletState.address) {
+      throw new Error('Your wallet is locked. Please unlock it first.');
+    }
+    
+    // Get UTXOs to calculate input count
+    const utxos = await self.LightwalletdClient.getUtxos(walletState.address);
+    
+    if (!utxos || utxos.length === 0) {
+      throw new Error('No UTXOs available');
+    }
+    
+    // Calculate how many inputs needed for this amount
+    const amountZatoshis = Math.round(amountZec * 100000000);
+    let inputCount = 0;
+    let totalInput = 0;
+    
+    for (const utxo of utxos.sort((a, b) => b.satoshis - a.satoshis)) {
+      inputCount++;
+      totalInput += utxo.satoshis;
+      // Estimate fee for this many inputs
+      const estimatedFee = calculateTransactionFee(inputCount, 2, FEE_RATES.standard);
+      if (totalInput >= amountZatoshis + estimatedFee) break;
+    }
+    
+    // Output count: 1 for recipient + 1 for change
+    const outputCount = 2;
+    
+    // Calculate fees for all speed options
+    const fees = {
+      slow: {
+        rate: FEE_RATES.slow,
+        zatoshis: calculateTransactionFee(inputCount, outputCount, FEE_RATES.slow),
+        estimatedTime: '10-15 minutes'
+      },
+      standard: {
+        rate: FEE_RATES.standard,
+        zatoshis: calculateTransactionFee(inputCount, outputCount, FEE_RATES.standard),
+        estimatedTime: '5-10 minutes'
+      },
+      fast: {
+        rate: FEE_RATES.fast,
+        zatoshis: calculateTransactionFee(inputCount, outputCount, FEE_RATES.fast),
+        estimatedTime: '2-5 minutes'
+      }
+    };
+    
+    console.log('[Background] Fee estimates:', fees);
+    
+    return {
+      success: true,
+      fees,
+      inputCount,
+      outputCount
+    };
+  } catch (error) {
+    console.error('[Background] Fee estimation failed:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+async function handleSendZec(data) {
+  try {
+    const { to, amountZec, feeRate } = data;
     
     console.log('[Background] SEND_ZEC:', { to, amountZec });
     
     if (!walletState.address) {
-      throw new Error('Wallet is locked');
+      throw new Error('Your wallet is locked. Please unlock it first.');
     }
     
     if (!to || !to.startsWith('t1')) {
-      throw new Error('Invalid recipient address');
+      throw new Error('Invalid recipient address. Zcash addresses start with "t1".');
     }
     
     if (!amountZec || amountZec <= 0) {
-      throw new Error('Invalid amount');
+      throw new Error('Please enter a valid amount greater than zero.');
     }
     
     // Get cached private key from session
     const session = await chrome.storage.session.get(['cachedPrivateKey']);
     if (!session.cachedPrivateKey) {
-      throw new Error('Wallet session expired. Please unlock wallet again.');
+      throw new Error('Your session has expired. Please unlock your wallet again.');
     }
     
     const privateKeyHex = session.cachedPrivateKey;
@@ -1811,7 +2112,7 @@ async function handleSendZec(data) {
     const utxos = await self.LightwalletdClient.getUtxos(walletState.address);
     
     if (!utxos || utxos.length === 0) {
-      throw new Error('No UTXOs available (no confirmed balance)');
+      throw new Error('No confirmed balance available. Please wait for your funds to be confirmed.');
     }
     
     console.log('[Background] Found', utxos.length, 'UTXOs');
@@ -1831,10 +2132,16 @@ async function handleSendZec(data) {
     }
     
     if (totalInput < requiredAmount) {
-      throw new Error(`Insufficient balance. Need ${requiredAmount} zatoshis, have ${totalInput}`);
+      const needed = (requiredAmount / 100000000).toFixed(8);
+      const available = (totalInput / 100000000).toFixed(8);
+      throw new Error(`Insufficient balance. You need ${needed} ZEC but only have ${available} ZEC available.`);
     }
     
     console.log('[Background] Selected', selectedUtxos.length, 'UTXOs, total:', totalInput, 'zatoshis');
+    
+    // Use provided feeRate or default to standard
+    const selectedFeeRate = feeRate || FEE_RATES.standard;
+    console.log('[Background] Using fee rate:', selectedFeeRate, 'zatoshis/byte');
     
     // Build transaction
     const tx = await self.ZcashTransaction.buildTransaction({
@@ -1843,7 +2150,7 @@ async function handleSendZec(data) {
         { address: to, amount: amountZec }
       ],
       changeAddress: walletState.address,
-      feeRate: 1 // 1 zatoshi per byte
+      feeRate: selectedFeeRate
     });
     
     console.log('[Background] Transaction built:', tx);
@@ -2568,8 +2875,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             result = await handleDeleteWallet(message.data);
             break;
             
+          case 'EXPORT_WALLET':
+            result = await handleExportWallet(message.data);
+            break;
+            
           case 'REFRESH_BALANCE':
             result = await handleRefreshBalance();
+            break;
+          
+          case 'ESTIMATE_FEE':
+            result = await handleEstimateFee(message.data);
             break;
           
           case 'SEND_ZEC':

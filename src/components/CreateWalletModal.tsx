@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import browser from 'webextension-polyfill';
+import PasswordStrength from './PasswordStrength';
 
 interface Props {
   onClose: () => void;
@@ -14,10 +15,13 @@ export default function CreateWalletModal({ onClose, onSuccess }: Props) {
   const [mnemonic, setMnemonic] = useState('');
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmChecked1, setConfirmChecked1] = useState(false);
+  const [confirmChecked2, setConfirmChecked2] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   async function handleCreate() {
-    if (!password || password.length < 8) {
-      setError('Password must be at least 8 characters');
+    if (!password || password.length < 6) {
+      setError('Password must be at least 6 characters');
       return;
     }
 
@@ -107,7 +111,7 @@ export default function CreateWalletModal({ onClose, onSuccess }: Props) {
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-zinc-300 mb-2">
-                  Password
+                  Password (min. 6 characters)
                 </label>
                 <input
                   type="password"
@@ -117,6 +121,9 @@ export default function CreateWalletModal({ onClose, onSuccess }: Props) {
                   placeholder="Enter password"
                   autoFocus
                 />
+                <div className="mt-2">
+                  <PasswordStrength password={password} />
+                </div>
               </div>
 
               <div>
@@ -165,7 +172,7 @@ export default function CreateWalletModal({ onClose, onSuccess }: Props) {
             <div className="space-y-4">
               <div className="bg-amber-500/10 border border-amber-500/50 rounded-lg p-3">
                 <p className="text-sm text-amber-400 font-medium">
-                  Write down these 24 words in order and store them safely!
+                  ⚠️ Write down these 24 words in order and store them safely!
                 </p>
               </div>
 
@@ -178,11 +185,22 @@ export default function CreateWalletModal({ onClose, onSuccess }: Props) {
                     </div>
                   ))}
                 </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(mnemonic);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }}
+                  className="mt-3 w-full py-2 px-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm rounded transition-colors"
+                >
+                  {copied ? '✓ Copied!' : '📋 Copy to clipboard'}
+                </button>
               </div>
 
               <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-3">
-                <p className="text-sm text-red-400">
-                  Never share your seed phrase with anyone. Anyone with these words can access your funds.
+                <p className="text-sm text-red-400 font-medium">
+                  🔴 CRITICAL: Never share your seed phrase with anyone. Anyone with these words can access your funds.
                 </p>
               </div>
 
@@ -201,36 +219,49 @@ export default function CreateWalletModal({ onClose, onSuccess }: Props) {
           <>
             <h2 className="text-lg font-semibold text-white mb-4">Confirm Backup</h2>
             <div className="space-y-4">
-              <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-4">
-                <div className="flex items-start gap-3 mb-3">
-                  <div className="w-5 h-5 rounded-full bg-amber-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <svg className="w-3 h-3 text-amber-400" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
+              <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-4 space-y-3">
+                <label className="flex items-start gap-3 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={confirmChecked1}
+                    onChange={(e) => setConfirmChecked1(e.target.checked)}
+                    className="w-5 h-5 mt-0.5 rounded border-zinc-600 text-amber-500 focus:ring-amber-500 focus:ring-offset-0 bg-zinc-800 cursor-pointer"
+                  />
+                  <div className="flex-1">
+                    <p className="text-sm text-white font-medium group-hover:text-amber-400 transition-colors">
+                      I have written down my seed phrase
+                    </p>
+                    <p className="text-xs text-zinc-400 mt-1">Stored in a safe physical location</p>
                   </div>
-                  <div>
-                    <p className="text-sm text-white font-medium">I have written down my seed phrase</p>
-                    <p className="text-xs text-zinc-400 mt-1">Stored in a safe location</p>
-                  </div>
-                </div>
+                </label>
 
-                <div className="flex items-start gap-3">
-                  <div className="w-5 h-5 rounded-full bg-amber-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                    <svg className="w-3 h-3 text-amber-400" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                    </svg>
+                <label className="flex items-start gap-3 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={confirmChecked2}
+                    onChange={(e) => setConfirmChecked2(e.target.checked)}
+                    className="w-5 h-5 mt-0.5 rounded border-zinc-600 text-amber-500 focus:ring-amber-500 focus:ring-offset-0 bg-zinc-800 cursor-pointer"
+                  />
+                  <div className="flex-1">
+                    <p className="text-sm text-white font-medium group-hover:text-amber-400 transition-colors">
+                      I understand I cannot recover my wallet without it
+                    </p>
+                    <p className="text-xs text-zinc-400 mt-1">There is no other way to restore access</p>
                   </div>
-                  <div>
-                    <p className="text-sm text-white font-medium">I understand I cannot recover my wallet without it</p>
-                    <p className="text-xs text-zinc-400 mt-1">This is the only backup</p>
-                  </div>
-                </div>
+                </label>
+              </div>
+
+              <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-3">
+                <p className="text-xs text-red-400">
+                  ⚠️ Zync Wallet does not store your seed phrase. We cannot help you recover it if lost.
+                </p>
               </div>
 
               <button
                 type="button"
                 onClick={handleConfirmed}
-                className="w-full btn btn-primary"
+                disabled={!confirmChecked1 || !confirmChecked2}
+                className="w-full btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Complete Setup
               </button>

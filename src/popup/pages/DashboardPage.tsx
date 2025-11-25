@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import type { FormEvent } from 'react';
 import browser from 'webextension-polyfill';
+import QRCode from 'qrcode';
 import type { WalletState } from '@/types/wallet';
+import { validateZcashAddress, validateZecAmount } from '@/utils/validation';
 import InscriptionModal from '@/components/InscriptionModal';
 import WalletSwitcher from '@/components/WalletSwitcher';
 import SettingsMenu from '@/components/SettingsMenu';
@@ -17,9 +19,10 @@ interface Props {
   onUpdate: () => void;
 }
 
-// Feature flag: Enable Create tab for testing
-// Set to false before launch to position wallet as infrastructure only
-const ENABLE_CREATE_TAB = true;
+// Feature flag: Enable Create tab for inscription creation
+// DISABLED FOR v1.0 LAUNCH: Inscription indexer and creation features are incomplete
+// TODO: Enable in v1.1 after completing indexer integration
+const ENABLE_CREATE_TAB = false;
 
 export default function DashboardPage({ walletState, onUpdate }: Props) {
   const [view, setView] = useState<'tokens' | 'nfts' | 'activity' | 'create'>('tokens');
@@ -27,13 +30,20 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
   const [lastRefreshTime, setLastRefreshTime] = useState(0);
   const [showSend, setShowSend] = useState(false);
   const [showReceive, setShowReceive] = useState(false);
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
   const [showWalletMenu, setShowWalletMenu] = useState(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [showConnectedSites, setShowConnectedSites] = useState(false);
   const [sendTo, setSendTo] = useState('');
   const [sendAmount, setSendAmount] = useState('');
   const [sendError, setSendError] = useState<string | null>(null);
+  const [addressError, setAddressError] = useState<string | null>(null);
+  const [amountError, setAmountError] = useState<string | null>(null);
   const [sendStatus, setSendStatus] = useState<'idle' | 'sending' | 'success'>('idle');
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [feeSpeed, setFeeSpeed] = useState<'slow' | 'standard' | 'fast'>('standard');
+  const [feeEstimates, setFeeEstimates] = useState<any>(null);
+  const [estimatingFee, setEstimatingFee] = useState(false);
   
   const [showInscription, setShowInscription] = useState<string | null>(null);
   const [inscriptionData, setInscriptionData] = useState<Record<string, string>>({});
@@ -126,7 +136,10 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
   // Fetch inscriptions when network changes or wallet unlocks
   useEffect(() => {
     if (walletState.address && !walletState.isLocked) {
-      loadInscriptions();
+      loadInscriptions().catch(err => {
+        console.error('Inscription loading failed in useEffect:', err);
+        setToast({ message: 'Failed to load inscriptions', type: 'error' });
+      });
     }
   }, [walletState.network, walletState.address, walletState.isLocked]); // Re-fetch when network/wallet changes
   
@@ -134,20 +147,10 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
   useEffect(() => {
     if (walletState.address && !walletState.isLocked) {
       setIsLoadingBalance(true);
-      onUpdate(); // Trigger parent to refresh balance
+      onUpdate(); // Trigger parent to refresh balance once
       
-      // Poll for balance updates for up to 5 seconds
-      let pollCount = 0;
-      const pollInterval = setInterval(() => {
-        pollCount++;
-        if (pollCount >= 10) { // 10 attempts * 500ms = 5 seconds
-          clearInterval(pollInterval);
-          return;
-        }
-        onUpdate(); // Keep refreshing until balance loads
-      }, 500);
-      
-      return () => clearInterval(pollInterval);
+      // FIX: Don't poll aggressively - background script already auto-refreshes on unlock
+      // Just wait for the natural balance update via storage changes
     }
   }, []); // Run ONCE on mount only
   
@@ -257,16 +260,33 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
   }
 
   async function handleCopyAddress() {
-    try {
-      if (walletState.address) {
-        await navigator.clipboard.writeText(walletState.address);
-        setToast({ message: 'Address copied to clipboard!', type: 'success' });
-      }
-    } catch (error) {
-      console.error('Failed to copy address:', error);
-      setToast({ message: 'Failed to copy address', type: 'error' });
+    if (walletState.address) {
+      await navigator.clipboard.writeText(walletState.address);
+      setToast({ message: 'Address copied to clipboard', type: 'success' });
     }
   }
+
+  async function generateQRCode(address: string) {
+    try {
+      const qrDataUrl = await QRCode.toDataURL(address, {
+        width: 300,
+        margin: 2,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF',
+        },
+      });
+      setQrCodeDataUrl(qrDataUrl);
+    } catch (error) {
+      console.error('Failed to generate QR code:', error);
+    }
+  }
+
+  useEffect(() => {
+    if (showReceive && walletState.address) {
+      generateQRCode(walletState.address);
+    }
+  }, [showReceive, walletState.address]);
 
   async function loadInscriptions() {
     if (!walletState.address) return;
@@ -324,50 +344,120 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
     }
   }
 
-  async function handleSendSubmit(event: FormEvent<HTMLFormElement>) {
+  async function estimateFees() {
+    const amountNumber = Number(sendAmount);
+    if (!sendAmount || !Number.isFinite(amountNumber) || amountNumber <= 0) {
+      setFeeEstimates(null);
+      return;
+    }
+
+    setEstimatingFee(true);
+    try {
+      const response = await browser.runtime.sendMessage({
+        type: 'WALLET_ACTION',
+        action: 'ESTIMATE_FEE',
+        data: {
+          to: sendTo || 't1placeholder',
+          amountZec: amountNumber,
+        },
+      });
+
+      if (response.success) {
+        setFeeEstimates(response.fees);
+      }
+    } catch (error) {
+      console.error('Failed to estimate fees:', error);
+    } finally {
+      setEstimatingFee(false);
+    }
+  }
+
+  function handleAddressChange(value: string) {
+    setSendTo(value);
+    
+    // Validate as user types (if not empty)
+    if (value.trim()) {
+      const validation = validateZcashAddress(value);
+      setAddressError(validation.valid ? null : validation.error || null);
+    } else {
+      setAddressError(null);
+    }
+  }
+
+  function handleAmountChange(value: string) {
+    setSendAmount(value);
+    
+    // Validate amount (if not empty)
+    if (value.trim()) {
+      const validation = validateZecAmount(value, walletState.balance);
+      setAmountError(validation.valid ? null : validation.error || null);
+    } else {
+      setAmountError(null);
+    }
+  }
+
+  function handleProceedToConfirmation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSendError(null);
+    setAddressError(null);
+    setAmountError(null);
 
-    const to = sendTo.trim();
-    if (!to) {
-      setSendError('Enter a recipient address');
+    // Final validation before showing confirmation
+    const addressValidation = validateZcashAddress(sendTo);
+    if (!addressValidation.valid) {
+      setAddressError(addressValidation.error || 'Invalid address');
       return;
     }
 
-    const amountNumber = Number(sendAmount);
-    if (!Number.isFinite(amountNumber) || amountNumber <= 0) {
-      setSendError('Enter a valid amount in ZEC');
+    const amountValidation = validateZecAmount(sendAmount, walletState.balance);
+    if (!amountValidation.valid) {
+      setAmountError(amountValidation.error || 'Invalid amount');
       return;
     }
 
-    if (!walletState.address) {
-      setSendError('Wallet address not available');
+    if (!feeEstimates) {
+      setSendError('Please wait for fee estimation to complete');
       return;
     }
 
+    // Show confirmation modal
+    setShowConfirmation(true);
+  }
+
+  async function confirmSendTransaction() {
+    setShowConfirmation(false);
     setSendStatus('sending');
 
     try {
+      const selectedFeeRate = feeEstimates?.[feeSpeed]?.rate || 2;
+      
       const result = await browser.runtime.sendMessage({
         type: 'WALLET_ACTION',
         action: 'SEND_ZEC',
         data: {
-          to,
-          amountZec: amountNumber,
+          to: sendTo.trim(),
+          amountZec: Number(sendAmount),
+          feeRate: selectedFeeRate,
         },
       });
 
       if (result && result.success) {
         setSendStatus('success');
         setSendAmount('');
+        setSendTo('');
+        setFeeEstimates(null);
+        setFeeSpeed('standard');
+        setToast({ message: 'Transaction sent successfully!', type: 'success' });
         onUpdate();
       } else {
         setSendStatus('idle');
-        setSendError(result?.error || 'Sending ZEC is not available yet in this build');
+        setSendError(result?.error || 'Failed to send transaction');
+        setToast({ message: result?.error || 'Transaction failed', type: 'error' });
       }
     } catch (error: any) {
       setSendStatus('idle');
       setSendError(error?.message || 'Failed to send transaction');
+      setToast({ message: 'Transaction failed', type: 'error' });
     }
   }
 
@@ -528,7 +618,46 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
       {/* Tab Content */}
       <div className="p-6 pt-4">
         {view === 'tokens' && (
-          <ZRC20List tokens={zrc20Tokens} onRefresh={loadInscriptions} />
+          <div className="space-y-4">
+            {/* Native ZEC Token */}
+            <div className="card">
+              <h3 className="font-bold mb-4 text-white">My Tokens</h3>
+              <div className="space-y-2">
+                {/* ZEC - Native Token */}
+                <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-3 hover:border-zinc-600 transition-colors">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center">
+                        <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M12 2L2 7L12 12L22 7L12 2Z" />
+                          <path d="M2 17L12 22L22 17L12 12L2 17Z" opacity="0.6" />
+                          <path d="M2 12L12 17L22 12" opacity="0.8" />
+                        </svg>
+                      </div>
+                      <div>
+                        <h4 className="font-semibold text-white flex items-center gap-2">
+                          ZEC
+                          <span className="text-xs px-2 py-0.5 bg-amber-500/20 text-amber-400 rounded">Native</span>
+                        </h4>
+                        <p className="text-xs text-zinc-500">Zcash</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-white font-semibold">
+                        {(walletState.balance / 100000000).toFixed(8)}
+                      </p>
+                      <p className="text-xs text-zinc-500">
+                        ≈ ${((walletState.balance / 100000000) * (zecPriceUsd || 0)).toFixed(2)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* ZRC-20 Tokens */}
+            <ZRC20List tokens={zrc20Tokens} onRefresh={loadInscriptions} />
+          </div>
         )}
 
         {view === 'nfts' && (
@@ -664,29 +793,105 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
         )}
       </div>
 
-      {showSend && (
+      {showSend && !showConfirmation && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
           <div className="bg-zinc-darker border border-zinc-700 rounded-xl p-6 w-full max-w-md mx-4">
             <h2 className="text-lg font-semibold text-white mb-4">Send ZEC</h2>
-            <form className="space-y-4" onSubmit={handleSendSubmit}>
+            <form className="space-y-4" onSubmit={handleProceedToConfirmation}>
               <div>
                 <label className="block text-sm text-zinc-400 mb-1">Recipient address</label>
                 <input
-                  className="input"
+                  className={`input ${addressError ? 'border-red-500 focus:border-red-500' : ''}`}
                   value={sendTo}
-                  onChange={(e) => setSendTo(e.target.value)}
+                  onChange={(e) => handleAddressChange(e.target.value)}
                   placeholder="t1..."
                 />
+                {addressError && (
+                  <p className="text-xs text-red-400 mt-1">{addressError}</p>
+                )}
               </div>
               <div>
                 <label className="block text-sm text-zinc-400 mb-1">Amount (ZEC)</label>
                 <input
-                  className="input"
+                  className={`input ${amountError ? 'border-red-500 focus:border-red-500' : ''}`}
                   value={sendAmount}
-                  onChange={(e) => setSendAmount(e.target.value)}
+                  onChange={(e) => {
+                    handleAmountChange(e.target.value);
+                    // Estimate fees when amount changes
+                    setTimeout(() => estimateFees(), 500);
+                  }}
                   placeholder="0.001"
                 />
+                {amountError && (
+                  <p className="text-xs text-red-400 mt-1">{amountError}</p>
+                )}
               </div>
+              
+              {feeEstimates && (
+                <>
+                  <div>
+                    <label className="block text-sm text-zinc-400 mb-2">Transaction Speed</label>
+                    <div className="space-y-2">
+                      {(['slow', 'standard', 'fast'] as const).map((speed) => (
+                        <label
+                          key={speed}
+                          className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${
+                            feeSpeed === speed
+                              ? 'border-amber-500 bg-amber-500/10'
+                              : 'border-zinc-700 hover:border-zinc-600'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="radio"
+                              name="feeSpeed"
+                              value={speed}
+                              checked={feeSpeed === speed}
+                              onChange={() => setFeeSpeed(speed)}
+                              className="text-amber-500 focus:ring-amber-500"
+                            />
+                            <div>
+                              <div className="text-sm font-medium text-white capitalize">{speed}</div>
+                              <div className="text-xs text-zinc-400">{feeEstimates[speed].estimatedTime}</div>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-sm font-medium text-white">
+                              {(feeEstimates[speed].zatoshis / 100000000).toFixed(8)} ZEC
+                            </div>
+                            <div className="text-xs text-zinc-500">
+                              ${((feeEstimates[speed].zatoshis / 100000000) * (zecPriceUsd || 0)).toFixed(4)}
+                            </div>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="bg-zinc-800 rounded-lg p-4 space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-zinc-400">Amount</span>
+                      <span className="text-white">{sendAmount} ZEC</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-zinc-400">Network Fee</span>
+                      <span className="text-white">
+                        {(feeEstimates[feeSpeed].zatoshis / 100000000).toFixed(8)} ZEC
+                      </span>
+                    </div>
+                    <div className="border-t border-zinc-700 pt-2 flex justify-between font-medium">
+                      <span className="text-white">Total</span>
+                      <span className="text-white">
+                        {(Number(sendAmount) + (feeEstimates[feeSpeed].zatoshis / 100000000)).toFixed(8)} ZEC
+                      </span>
+                    </div>
+                  </div>
+                </>
+              )}
+              
+              {estimatingFee && (
+                <div className="text-center text-sm text-zinc-400">Calculating fees...</div>
+              )}
               {sendError && (
                 <p className="text-sm text-red-500">{sendError}</p>
               )}
@@ -708,9 +913,9 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
                 <button
                   type="submit"
                   className="btn btn-primary"
-                  disabled={sendStatus === 'sending'}
+                  disabled={sendStatus === 'sending' || !!addressError || !!amountError || !feeEstimates}
                 >
-                  {sendStatus === 'sending' ? 'Sending...' : 'Send'}
+                  Review Transaction
                 </button>
               </div>
             </form>
@@ -718,14 +923,104 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
         </div>
       )}
 
+      {showConfirmation && feeEstimates && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+          <div className="bg-zinc-darker border border-zinc-700 rounded-xl p-6 w-full max-w-md mx-4">
+            <h2 className="text-lg font-semibold text-white mb-4">Confirm Transaction</h2>
+            
+            <div className="space-y-4">
+              <div className="bg-amber-500/10 border border-amber-500/50 rounded-lg p-3">
+                <p className="text-sm text-amber-400">
+                  ⚠️ Please review the transaction details carefully before confirming
+                </p>
+              </div>
+
+              <div className="bg-zinc-800 rounded-lg p-4 space-y-3">
+                <div>
+                  <p className="text-xs text-zinc-500 mb-1">Sending to</p>
+                  <p className="text-sm text-white font-mono break-all">{sendTo}</p>
+                </div>
+                
+                <div className="border-t border-zinc-700 pt-3">
+                  <p className="text-xs text-zinc-500 mb-1">Amount</p>
+                  <p className="text-lg text-white font-semibold">{sendAmount} ZEC</p>
+                  <p className="text-xs text-zinc-500">
+                    ≈ ${((Number(sendAmount) || 0) * (zecPriceUsd || 0)).toFixed(2)}
+                  </p>
+                </div>
+                
+                <div className="border-t border-zinc-700 pt-3">
+                  <p className="text-xs text-zinc-500 mb-1">Network Fee ({feeSpeed})</p>
+                  <p className="text-sm text-white">
+                    {(feeEstimates[feeSpeed].zatoshis / 100000000).toFixed(8)} ZEC
+                  </p>
+                  <p className="text-xs text-zinc-500">
+                    ≈ ${((feeEstimates[feeSpeed].zatoshis / 100000000) * (zecPriceUsd || 0)).toFixed(4)}
+                  </p>
+                </div>
+                
+                <div className="border-t border-zinc-700 pt-3">
+                  <p className="text-xs text-zinc-500 mb-1">Total</p>
+                  <p className="text-xl text-amber-400 font-bold">
+                    {(Number(sendAmount) + (feeEstimates[feeSpeed].zatoshis / 100000000)).toFixed(8)} ZEC
+                  </p>
+                  <p className="text-xs text-zinc-500">
+                    ≈ ${((Number(sendAmount) + (feeEstimates[feeSpeed].zatoshis / 100000000)) * (zecPriceUsd || 0)).toFixed(2)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-3">
+                <p className="text-xs text-zinc-400">
+                  <span className="text-white font-medium">Note:</span> This transaction cannot be reversed once confirmed.
+                </p>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmation(false)}
+                  className="flex-1 btn btn-secondary"
+                  disabled={sendStatus === 'sending'}
+                >
+                  Back
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmSendTransaction}
+                  className="flex-1 bg-amber-600 hover:bg-amber-700 text-white font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
+                  disabled={sendStatus === 'sending'}
+                >
+                  {sendStatus === 'sending' ? 'Sending...' : 'Confirm & Send'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showReceive && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-zinc-darker border border-zinc-700 rounded-xl p-6 w-full max-w-md mx-4 text-center">
-            <h2 className="text-lg font-semibold text-white mb-4">Receive ZEC</h2>
-            <p className="text-xs text-zinc-400 mb-2">Share this address to receive ZEC</p>
-            <p className="font-mono text-sm break-all text-amber-500 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 mb-4">
+          <div className="bg-zinc-darker border border-zinc-700 rounded-xl p-6 w-full max-w-md mx-4">
+            <h2 className="text-lg font-semibold text-white mb-4 text-center">Receive ZEC</h2>
+            <p className="text-xs text-zinc-400 mb-4 text-center">Share this address to receive ZEC</p>
+            
+            {qrCodeDataUrl && (
+              <div className="flex justify-center mb-4">
+                <div className="bg-white p-4 rounded-lg">
+                  <img 
+                    src={qrCodeDataUrl} 
+                    alt="QR Code" 
+                    className="w-64 h-64"
+                  />
+                </div>
+              </div>
+            )}
+            
+            <p className="font-mono text-sm break-all text-amber-500 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 mb-4 text-center">
               {walletState.address}
             </p>
+            
             <div className="flex justify-center gap-2">
               <button
                 type="button"

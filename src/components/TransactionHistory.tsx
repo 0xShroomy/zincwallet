@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import browser from 'webextension-polyfill';
 
 interface Transaction {
@@ -19,32 +19,46 @@ interface Props {
 export default function TransactionHistory({ walletAddress, isRefreshing, network = 'mainnet' }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [page, setPage] = useState(0);
+  const observerTarget = useRef<HTMLDivElement>(null);
+  const ITEMS_PER_PAGE = 15;
 
-  useEffect(() => {
-    loadTransactions();
-  }, [walletAddress]);
-
-  // Reload when isRefreshing changes
-  useEffect(() => {
-    if (isRefreshing) {
-      loadTransactions();
+  async function loadTransactions(reset = false) {
+    const isInitialLoad = reset || page === 0;
+    if (isInitialLoad) {
+      setLoading(true);
+      setPage(0);
+    } else {
+      setLoadingMore(true);
     }
-  }, [isRefreshing]);
-
-  async function loadTransactions() {
-    setLoading(true);
     setError(null);
 
     try {
+      const currentPage = reset ? 0 : page;
       const response = await browser.runtime.sendMessage({
         type: 'WALLET_ACTION',
         action: 'GET_TRANSACTIONS',
-        data: { address: walletAddress },
+        data: { 
+          address: walletAddress,
+          limit: ITEMS_PER_PAGE,
+          offset: currentPage * ITEMS_PER_PAGE
+        },
       });
 
       if (response.success) {
-        setTransactions(response.transactions || []);
+        const newTxs = response.transactions || [];
+        if (reset) {
+          setTransactions(newTxs);
+        } else {
+          setTransactions(prev => [...prev, ...newTxs]);
+        }
+        setHasMore(newTxs.length === ITEMS_PER_PAGE);
+        if (!reset) {
+          setPage(prev => prev + 1);
+        }
       } else {
         setError(response.error || 'Failed to load transactions');
       }
@@ -52,8 +66,52 @@ export default function TransactionHistory({ walletAddress, isRefreshing, networ
       setError('Failed to load transactions');
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }
+
+  const loadMore = useCallback(() => {
+    if (!loading && !loadingMore && hasMore) {
+      loadTransactions(false);
+    }
+  }, [loading, loadingMore, hasMore, page]);
+
+  useEffect(() => {
+    setPage(0);
+    setTransactions([]);
+    loadTransactions(true);
+  }, [walletAddress]);
+
+  // Reload when isRefreshing changes
+  useEffect(() => {
+    if (isRefreshing) {
+      setPage(0);
+      loadTransactions(true);
+    }
+  }, [isRefreshing]);
+
+  // Intersection Observer for infinite scroll
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries[0].isIntersecting && hasMore && !loading && !loadingMore) {
+          loadMore();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    const currentTarget = observerTarget.current;
+    if (currentTarget) {
+      observer.observe(currentTarget);
+    }
+
+    return () => {
+      if (currentTarget) {
+        observer.unobserve(currentTarget);
+      }
+    };
+  }, [hasMore, loading, loadingMore, loadMore]);
 
   function formatAmount(zatoshis: number): string {
     return (zatoshis / 100000000).toFixed(8);
@@ -115,7 +173,7 @@ export default function TransactionHistory({ walletAddress, isRefreshing, networ
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold text-white">Recent Transactions</h3>
           <button
-            onClick={loadTransactions}
+            onClick={() => loadTransactions(true)}
             className="text-xs text-amber-500 hover:text-amber-400"
           >
             Retry
@@ -217,6 +275,24 @@ export default function TransactionHistory({ walletAddress, isRefreshing, networ
             </div>
           </div>
         ))}
+        
+        {/* Observer target for infinite scroll */}
+        <div ref={observerTarget} className="h-4" />
+        
+        {/* Loading more indicator */}
+        {loadingMore && (
+          <div className="text-center py-4">
+            <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-amber-500"></div>
+            <p className="text-xs text-zinc-400 mt-2">Loading more...</p>
+          </div>
+        )}
+        
+        {/* End of list indicator */}
+        {!hasMore && transactions.length > 0 && (
+          <div className="text-center py-4">
+            <p className="text-xs text-zinc-500">No more transactions</p>
+          </div>
+        )}
       </div>
     </div>
   );
