@@ -96,6 +96,20 @@ function App() {
       try {
         const response = await Promise.race([messagePromise, timeoutPromise]);
         console.log('[App] Background state response:', response);
+        
+        // CRITICAL: ALWAYS use storage as source of truth for isInitialized
+        // Background may be in any state (initializing, crashed, out of sync)
+        // Storage is reliable and synchronous - trust it completely
+        const backgroundSaidInitialized = response.isInitialized;
+        response.isInitialized = hasWallets;
+        
+        if (backgroundSaidInitialized !== hasWallets) {
+          console.warn('[App] Background/storage mismatch - trusting storage:', { 
+            storage: hasWallets, 
+            background: backgroundSaidInitialized 
+          });
+        }
+        
         setWalletState(response as WalletState);
       } catch (bgError) {
         // Background script failed, but we know wallets exist from storage
