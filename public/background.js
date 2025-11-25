@@ -468,8 +468,10 @@ async function handleUnlockWallet(data) {
 
     console.log('[Background] Wallet unlocked successfully:', wallet.name);
     
-    // Refresh balance
-    handleRefreshBalance().catch(err => {
+    // Refresh balance in background (don't await - UI will show skeleton loader)
+    handleRefreshBalance().then(() => {
+      console.log('[Background] Balance loaded successfully');
+    }).catch(err => {
       console.warn('[Background] Auto-refresh balance failed:', err);
     });
     

@@ -18,9 +18,11 @@ function App() {
     
     // Listen for storage changes (when background updates balance or approvals)
     const handleStorageChange = (changes: any) => {
+      console.log('[App] Storage change detected:', Object.keys(changes));
+      
       // If wallet state changes in storage, reload
       if (changes.walletState || changes.wallets) {
-        console.log('[App] Storage changed, reloading state...');
+        console.log('[App] WalletState changed! Old balance:', changes.walletState?.oldValue?.balance, 'New balance:', changes.walletState?.newValue?.balance);
         loadWalletState();
       }
       

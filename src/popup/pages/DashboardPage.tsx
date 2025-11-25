@@ -7,11 +7,10 @@ import { validateZcashAddress, validateZecAmount } from '@/utils/validation';
 import InscriptionModal from '@/components/InscriptionModal';
 import WalletSwitcher from '@/components/WalletSwitcher';
 import SettingsMenu from '@/components/SettingsMenu';
-import ConnectedSites from '../components/ConnectedSites';
-import Toast from '@/components/Toast';
 import TransactionHistory from '@/components/TransactionHistory';
-import ZRC20List from '@/components/ZRC20List';
 import NFTGallery from '@/components/NFTGallery';
+import Toast from '@/components/Toast';
+import ConnectedSites from '../components/ConnectedSites';
 import type { ZRC20Token, NFTInscription } from '@/services/inscriptionIndexer';
 
 interface Props {
@@ -143,34 +142,43 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
     }
   }, [walletState.network, walletState.address, walletState.isLocked]); // Re-fetch when network/wallet changes
   
-  // Auto-fetch balance when wallet opens/unlocks (once only)
+  // Auto-fetch balance when wallet opens/unlocks + poll for updates
   useEffect(() => {
     if (walletState.address && !walletState.isLocked) {
       setIsLoadingBalance(true);
       onUpdate(); // Trigger parent to refresh balance once
       
-      // FIX: Don't poll aggressively - background script already auto-refreshes on unlock
-      // Just wait for the natural balance update via storage changes
+      // Poll for balance updates every 500ms for up to 5 seconds
+      let pollCount = 0;
+      const pollInterval = setInterval(() => {
+        pollCount++;
+        console.log('[Dashboard] Polling for balance update...', pollCount);
+        onUpdate();
+        
+        if (pollCount >= 10) {
+          // Stop polling after 5 seconds (10 * 500ms)
+          clearInterval(pollInterval);
+          setIsLoadingBalance(false);
+        }
+      }, 500);
+      
+      return () => clearInterval(pollInterval);
     }
   }, []); // Run ONCE on mount only
   
   // Stop loading when balance updates (with smooth transition delay)
   useEffect(() => {
-    // Only stop loading if we actually received data (non-zero or after delay)
-    if (walletState.balance > 0) {
+    console.log('[Dashboard] Balance prop changed:', walletState.balance, 'zatoshis =', (walletState.balance / 100000000).toFixed(8), 'ZEC');
+    
+    if (walletState.balance > 0 && isLoadingBalance) {
       // Balance loaded! Wait a moment for smooth transition
+      console.log('[Dashboard] Balance > 0, stopping skeleton loader');
       const smoothTransition = setTimeout(() => {
         setIsLoadingBalance(false);
-      }, 400); // 400ms delay for smooth UX
+      }, 300); // 300ms delay for smooth UX
       return () => clearTimeout(smoothTransition);
-    } else if (walletState.balance === 0) {
-      // If balance is 0, wait longer to see if it updates
-      const timer = setTimeout(() => {
-        setIsLoadingBalance(false);
-      }, 2000); // Wait 2 seconds max for actual 0 balance
-      return () => clearTimeout(timer);
     }
-  }, [walletState.balance]);
+  }, [walletState.balance, isLoadingBalance]);
   
   // Fetch ZEC price on mount and refresh every 5 minutes
   useEffect(() => {
@@ -618,45 +626,83 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
       {/* Tab Content */}
       <div className="p-6 pt-4">
         {view === 'tokens' && (
-          <div className="space-y-4">
-            {/* Native ZEC Token */}
-            <div className="card">
-              <h3 className="font-bold mb-4 text-white">My Tokens</h3>
-              <div className="space-y-2">
-                {/* ZEC - Native Token */}
-                <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-3 hover:border-zinc-600 transition-colors">
+          <div className="card">
+            <h3 className="font-bold mb-4 text-white">My Tokens</h3>
+            <div className="space-y-2">
+              {/* ZEC - Native Token */}
+              <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-3 hover:border-zinc-600 transition-colors">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 flex items-center justify-center">
+                      <img 
+                        src="/icons/zcash-zec-logo.svg" 
+                        alt="Zcash" 
+                        className="w-10 h-10"
+                      />
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-white flex items-center gap-2">
+                        ZEC
+                        <span className="text-xs px-2 py-0.5 bg-amber-500/20 text-amber-400 rounded">Native</span>
+                      </h4>
+                      <p className="text-xs text-zinc-500">Zcash</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    {isLoadingBalance ? (
+                      <>
+                        <div className="h-5 bg-zinc-700 rounded animate-pulse mb-1 w-24 ml-auto"></div>
+                        <div className="h-4 bg-zinc-700 rounded animate-pulse w-16 ml-auto"></div>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-white font-semibold">
+                          {(walletState.balance / 100000000).toFixed(8)}
+                        </p>
+                        <p className="text-xs text-zinc-500">
+                          ≈ ${((walletState.balance / 100000000) * (zecPriceUsd || 0)).toFixed(2)}
+                        </p>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+              
+              {/* ZRC-20 Tokens */}
+              {zrc20Tokens.map((token) => (
+                <div
+                  key={token.tick}
+                  className="bg-zinc-900 border border-zinc-700 rounded-lg p-3 hover:border-zinc-600 transition-colors"
+                >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center">
-                        <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M12 2L2 7L12 12L22 7L12 2Z" />
-                          <path d="M2 17L12 22L22 17L12 12L2 17Z" opacity="0.6" />
-                          <path d="M2 12L12 17L22 12" opacity="0.8" />
-                        </svg>
+                      <div className="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center">
+                        <span className="text-amber-400 font-bold text-sm">
+                          {token.tick.slice(0, 2)}
+                        </span>
                       </div>
                       <div>
-                        <h4 className="font-semibold text-white flex items-center gap-2">
-                          ZEC
-                          <span className="text-xs px-2 py-0.5 bg-amber-500/20 text-amber-400 rounded">Native</span>
-                        </h4>
-                        <p className="text-xs text-zinc-500">Zcash</p>
+                        <h4 className="font-semibold text-white">{token.tick}</h4>
+                        <p className="text-xs text-zinc-500">ZRC-20</p>
                       </div>
                     </div>
                     <div className="text-right">
                       <p className="text-white font-semibold">
-                        {(walletState.balance / 100000000).toFixed(8)}
+                        {token.balance.toLocaleString()}
                       </p>
-                      <p className="text-xs text-zinc-500">
-                        ≈ ${((walletState.balance / 100000000) * (zecPriceUsd || 0)).toFixed(2)}
-                      </p>
+                      <p className="text-xs text-zinc-500">Balance</p>
                     </div>
                   </div>
                 </div>
-              </div>
+              ))}
+              
+              {zrc20Tokens.length === 0 && (
+                <div className="text-center py-6 border-t border-zinc-700 mt-2">
+                  <p className="text-zinc-400 text-sm mb-1">No ZRC-20 tokens yet</p>
+                  <p className="text-xs text-zinc-500">Deploy or mint tokens to see them here</p>
+                </div>
+              )}
             </div>
-            
-            {/* ZRC-20 Tokens */}
-            <ZRC20List tokens={zrc20Tokens} onRefresh={loadInscriptions} />
           </div>
         )}
 
@@ -915,7 +961,7 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
                   className="btn btn-primary"
                   disabled={sendStatus === 'sending' || !!addressError || !!amountError || !feeEstimates}
                 >
-                  Review Transaction
+                  Continue
                 </button>
               </div>
             </form>
@@ -1007,17 +1053,17 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
             
             {qrCodeDataUrl && (
               <div className="flex justify-center mb-4">
-                <div className="bg-white p-4 rounded-lg">
+                <div className="bg-white p-3 rounded-lg">
                   <img 
                     src={qrCodeDataUrl} 
                     alt="QR Code" 
-                    className="w-64 h-64"
+                    className="w-48 h-48"
                   />
                 </div>
               </div>
             )}
             
-            <p className="font-mono text-sm break-all text-amber-500 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 mb-4 text-center">
+            <p className="font-mono text-xs break-all text-amber-500 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 mb-4 text-center leading-tight">
               {walletState.address}
             </p>
             
