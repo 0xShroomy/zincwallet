@@ -276,8 +276,10 @@ self.ZcashTransaction = (function() {
     // 9. nLockTime
     buffer.push(...encodeUint32LE(tx.lockTime));
     
-    // 10. nExpiryHeight
-    buffer.push(...encodeUint32LE(0)); // No expiry
+    // 10. nExpiryHeight - must match serialization!
+    const currentBlock = 2114255; // Approximate current Zcash block height
+    const expiryHeight = currentBlock + 20;
+    buffer.push(...encodeUint32LE(expiryHeight));
     
     // 11. valueBalance (8 bytes, zero for transparent)
     buffer.push(...encodeUint64LE(0n));
@@ -404,8 +406,11 @@ self.ZcashTransaction = (function() {
     // Lock time
     buffer.push(...encodeUint32LE(tx.lockTime));
     
-    // Expiry height (0 = no expiry)
-    buffer.push(...encodeUint32LE(0));
+    // Expiry height - must be a future block height (not 0!)
+    // Set to current block + 20 blocks (~50 minutes)
+    const currentBlock = 2114255; // Approximate current Zcash block height
+    const expiryHeight = currentBlock + 20;
+    buffer.push(...encodeUint32LE(expiryHeight));
     
     // For transparent-only transactions, we're done!
     // (Sapling fields like valueBalance, nShieldedSpend, etc. are NOT included)

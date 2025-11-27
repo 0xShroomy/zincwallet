@@ -70,13 +70,10 @@ export default async function handler(req, res) {
         signal: AbortSignal.timeout(15000) // 15 second timeout for broadcast
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.log(`Broadcast failed with ${response.status}: ${errorText}`);
-        continue;
-      }
-
       const data = await response.json();
+      
+      console.log(`Tatum response status: ${response.status}`);
+      console.log(`Tatum response body: ${JSON.stringify(data)}`);
       
       // Tatum RPC format: { result: "txid", error: null }
       if (explorer.format === 'tatum-rpc') {
@@ -87,13 +84,18 @@ export default async function handler(req, res) {
             source: 'Tatum Zcash RPC'
           });
         } else if (data.error) {
-          console.log(`Tatum RPC error: ${JSON.stringify(data.error)}`);
+          console.error(`Tatum RPC error: ${JSON.stringify(data.error)}`);
           return res.status(400).json({
             success: false,
             error: data.error.message || 'Transaction broadcast failed',
-            details: data.error
+            tatumError: data.error
           });
         }
+      }
+      
+      if (!response.ok) {
+        console.error(`Broadcast failed with ${response.status}: ${JSON.stringify(data)}`);
+        continue;
       }
 
     } catch (error) {
