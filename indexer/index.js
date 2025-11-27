@@ -110,11 +110,19 @@ function parseZincInscription(opReturnHex) {
     const dataHex = opReturnHex.substring(4);
     const buffer = Buffer.from(dataHex, 'hex');
     
-    if (buffer.length < 2) return null;
+    if (buffer.length < 2) {
+      console.log(`  ⚠️ Buffer too short: ${buffer.length} bytes`);
+      return null;
+    }
     
     // Check for magic byte (0x7A = 122)
     const magic = buffer[0];
-    if (magic !== 0x7A) return null;
+    console.log(`  🔍 Checking magic byte: 0x${magic.toString(16)} (expected 0x7a)`);
+    
+    if (magic !== 0x7A) {
+      console.log(`  ❌ Not Zinc Protocol (wrong magic byte)`);
+      return null;
+    }
     
     // Read proto/op combined byte
     const protoOp = buffer[1];
@@ -405,6 +413,13 @@ async function processTransaction(txid, blockHeight, txData = null) {
       const response = await fetch(url);
       const data = await response.json();
       tx = data.data[txid];
+      
+      // Debug: Log what we got
+      if (tx) {
+        console.log(`  ✅ Fetched tx ${txid.substring(0,8)}, has ${tx.outputs?.length || 0} outputs, ${tx.inputs?.length || 0} inputs`);
+      } else {
+        console.log(`  ❌ Failed to fetch tx data for ${txid.substring(0,8)}`);
+      }
     }
     
     if (!tx) return;
@@ -412,8 +427,30 @@ async function processTransaction(txid, blockHeight, txData = null) {
     let foundInscription = false;
     
     // 1. Check outputs for Zinc Protocol (OP_RETURN)
+    // Debug: Check what the output structure actually looks like
+    if (tx.outputs && tx.outputs.length > 0) {
+      const firstOutput = tx.outputs[0];
+      console.log(`  📋 Output structure sample:`, Object.keys(firstOutput).join(', '));
+    }
+    
     for (const output of tx.outputs || []) {
-      if (!output.script_hex || !output.script_hex.startsWith('6a')) continue;
+      // Debug: Log what we're checking
+      console.log(`  🔎 Checking output: type=${output.type}, script_hex=${output.script_hex?.substring(0, 10)}...`);
+      
+      if (!output.script_hex) {
+        // Check if it's named differently
+        if (output.scripthex || output.scriptHex || output.script) {
+          console.log(`  ⚠️ Found script field but not 'script_hex':`, Object.keys(output).filter(k => k.toLowerCase().includes('script')));
+        }
+        continue;
+      }
+      
+      // Debug: Log ALL OP_RETURN outputs
+      if (output.script_hex.startsWith('6a')) {
+        console.log(`  🔍 Found OP_RETURN in ${txid}:`, output.script_hex.substring(0, 20) + '...');
+      } else {
+        console.log(`  ⏭️  Skipping non-OP_RETURN output (starts with ${output.script_hex.substring(0, 4)})`);
+      }
       
       const inscription = parseZincInscription(output.script_hex);
       if (!inscription) continue;
@@ -445,14 +482,17 @@ async function processTransaction(txid, blockHeight, txData = null) {
     
     // 2. Check inputs for Zerdinals (ScriptSig)
     for (const input of tx.inputs || []) {
-      if (!input.script_hex) continue;
+      // Zerdinals inscriptions are in spending_signature_hex, not script_hex!
+      const scriptSigHex = input.spending_signature_hex;
+      
+      if (!scriptSigHex) continue;
       
       // Debug: Check if script contains "ord" marker
-      if (input.script_hex.includes('6f7264')) {
-        console.log(`🔍 Found "ord" marker in tx ${txid}, script length: ${input.script_hex.length}`);
+      if (scriptSigHex.includes('6f7264')) {
+        console.log(`🔍 Found "ord" marker in tx ${txid}, script length: ${scriptSigHex.length}`);
       }
       
-      const inscription = parseZerdinalsInscription(input.script_hex);
+      const inscription = parseZerdinalsInscription(scriptSigHex);
       if (!inscription) continue;
       
       foundInscription = true;
