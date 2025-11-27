@@ -576,7 +576,10 @@ async function processTransaction(txid, blockHeight, txData = null) {
       
       // Process ZRC-721 (NFT) inscriptions
       if (inscription.subProtocol === 'zrc-721' && inscription.operation === 'mint') {
+        console.log(`  🎨 Processing NFT mint: ${inscription.data.collection} #${inscription.data.id}`);
         const ownerAddress = input.recipient || null;
+        console.log(`  🔍 Owner address from input.recipient: ${ownerAddress}`);
+        
         if (ownerAddress) {
           await supabase.from('nft_ownership').upsert({
             address: ownerAddress,
@@ -587,6 +590,8 @@ async function processTransaction(txid, blockHeight, txData = null) {
             network: NETWORK
           });
           console.log(`  ✅ Saved NFT ownership: ${inscription.data.collection} #${inscription.data.id} → ${ownerAddress.substring(0, 10)}...`);
+        } else {
+          console.log(`  ⚠️ No owner address found for NFT`);
         }
       }
     }
