@@ -209,7 +209,8 @@ self.ZcashTransaction = (function() {
         txid: utxo.txid,
         vout: utxo.vout,
         script: hexToBytes(utxo.scriptPubKey || ''),
-        sequence: 0xffffffff
+        sequence: 0xffffffff,
+        value: utxo.value || utxo.satoshis || 0 // REQUIRED for ZIP-243 signing!
       })),
       outputs: txOutputs,
       lockTime: 0,
@@ -221,55 +222,84 @@ self.ZcashTransaction = (function() {
   }
   
   /**
-   * Serialize transaction for signing (creates sighash)
+   * Serialize transaction for signing using ZIP-243 (Overwinter/Sapling)
+   * This is completely different from Bitcoin signing!
    */
   async function serializeForSigning(tx, inputIndex, prevScript) {
     const buffer = [];
     
-    // Version (4 bytes, little-endian)
-    buffer.push(...encodeUint32LE(tx.version));
+    // 1. nVersion + fOverwintered
+    buffer.push(...encodeUint32LE(tx.version)); // Already has Overwinter bit
     
-    // Input count
-    buffer.push(...encodeVarInt(tx.inputs.length));
+    // 2. nVersionGroupId
+    buffer.push(...encodeUint32LE(0x892f2085));
     
-    // Inputs
-    for (let i = 0; i < tx.inputs.length; i++) {
-      const input = tx.inputs[i];
-      
-      // Previous txid (reversed)
+    // 3. hashPrevouts (double SHA256 of all input outpoints)
+    const prevoutsData = [];
+    for (const input of tx.inputs) {
       const txidBytes = hexToBytes(input.txid);
-      buffer.push(...Array.from(txidBytes).reverse());
-      
-      // Output index
-      buffer.push(...encodeUint32LE(input.vout));
-      
-      // Script (use prevScript for the input being signed, empty for others)
-      if (i === inputIndex) {
-        buffer.push(...encodeVarInt(prevScript.length));
-        buffer.push(...prevScript);
-      } else {
-        buffer.push(0); // Empty script
-      }
-      
-      // Sequence
-      buffer.push(...encodeUint32LE(input.sequence));
+      prevoutsData.push(...Array.from(txidBytes).reverse());
+      prevoutsData.push(...encodeUint32LE(input.vout));
     }
+    const hashPrevouts = await hash256(new Uint8Array(prevoutsData));
+    buffer.push(...hashPrevouts);
     
-    // Output count
-    buffer.push(...encodeVarInt(tx.outputs.length));
+    // 4. hashSequence (double SHA256 of all input sequences)
+    const sequenceData = [];
+    for (const input of tx.inputs) {
+      sequenceData.push(...encodeUint32LE(input.sequence));
+    }
+    const hashSequence = await hash256(new Uint8Array(sequenceData));
+    buffer.push(...hashSequence);
     
-    // Outputs
+    // 5. hashOutputs (double SHA256 of all outputs)
+    const outputsData = [];
     for (const output of tx.outputs) {
-      buffer.push(...encodeUint64LE(output.value));
-      buffer.push(...encodeVarInt(output.script.length));
-      buffer.push(...output.script);
+      outputsData.push(...encodeUint64LE(output.value));
+      outputsData.push(...encodeVarInt(output.script.length));
+      outputsData.push(...output.script);
     }
+    const hashOutputs = await hash256(new Uint8Array(outputsData));
+    buffer.push(...hashOutputs);
     
-    // Lock time
+    // 6. hashJoinSplits (32 zero bytes for transparent-only)
+    buffer.push(...new Array(32).fill(0));
+    
+    // 7. hashShieldedSpends (32 zero bytes for transparent-only)
+    buffer.push(...new Array(32).fill(0));
+    
+    // 8. hashShieldedOutputs (32 zero bytes for transparent-only)
+    buffer.push(...new Array(32).fill(0));
+    
+    // 9. nLockTime
     buffer.push(...encodeUint32LE(tx.lockTime));
     
-    // Hash type (SIGHASH_ALL = 0x01)
+    // 10. nExpiryHeight
+    buffer.push(...encodeUint32LE(0)); // No expiry
+    
+    // 11. valueBalance (8 bytes, zero for transparent)
+    buffer.push(...encodeUint64LE(0n));
+    
+    // 12. nHashType (SIGHASH_ALL)
     buffer.push(...encodeUint32LE(0x01));
+    
+    // 13. Input being signed: outpoint
+    const input = tx.inputs[inputIndex];
+    const txidBytes = hexToBytes(input.txid);
+    buffer.push(...Array.from(txidBytes).reverse());
+    buffer.push(...encodeUint32LE(input.vout));
+    
+    // 14. scriptCode of input (the prevScript)
+    buffer.push(...encodeVarInt(prevScript.length));
+    buffer.push(...prevScript);
+    
+    // 15. value of input (8 bytes)
+    // We need to get this from the UTXO!
+    const utxoValue = tx.inputs[inputIndex].value || 0n;
+    buffer.push(...encodeUint64LE(BigInt(utxoValue)));
+    
+    // 16. nSequence of input
+    buffer.push(...encodeUint32LE(input.sequence));
     
     return new Uint8Array(buffer);
   }
