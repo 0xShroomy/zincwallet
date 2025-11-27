@@ -374,17 +374,8 @@ self.ZcashTransaction = (function() {
     // Expiry height (0 = no expiry)
     buffer.push(...encodeUint32LE(0));
     
-    // Value balance (0 for transparent-only)
-    buffer.push(...encodeUint64LE(0n));
-    
-    // nShieldedSpend
-    buffer.push(...encodeVarInt(0));
-    
-    // nShieldedOutput
-    buffer.push(...encodeVarInt(0));
-    
-    // nJoinSplit
-    buffer.push(...encodeVarInt(0));
+    // For transparent-only transactions, we're done!
+    // (Sapling fields like valueBalance, nShieldedSpend, etc. are NOT included)
     
     return bytesToHex(new Uint8Array(buffer));
   }
