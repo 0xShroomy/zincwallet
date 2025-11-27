@@ -146,7 +146,21 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
   useEffect(() => {
     if (walletState.address && !walletState.isLocked) {
       setIsLoadingBalance(true);
-      onUpdate(); // Trigger parent to refresh balance once
+      
+      // Trigger actual balance refresh from blockchain if balance is 0 or stale
+      const shouldRefresh = walletState.balance === 0 || !lastRefreshTime;
+      if (shouldRefresh) {
+        console.log('[Dashboard] Balance is 0 or stale, triggering refresh from blockchain...');
+        browser.runtime.sendMessage({
+          type: 'WALLET_ACTION',
+          action: 'REFRESH_BALANCE',
+          data: {},
+        }).catch(err => {
+          console.error('[Dashboard] Initial balance refresh failed:', err);
+        });
+      }
+      
+      onUpdate(); // Also reload from storage
       
       // Poll for balance updates every 500ms for up to 5 seconds
       let pollCount = 0;
@@ -164,7 +178,7 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
       
       return () => clearInterval(pollInterval);
     }
-  }, []); // Run ONCE on mount only
+  }, [walletState.address, walletState.isLocked]); // Run ONCE on mount only
   
   // Stop loading when balance updates (with smooth transition delay)
   useEffect(() => {
@@ -552,24 +566,36 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
             <p className="font-mono text-xs break-all text-amber-500">{walletState.address}</p>
           </div> */}
 
-          <div className="grid grid-cols-2 gap-3">
+          {/* Modern Action Buttons */}
+          <div className="flex items-center justify-center gap-3 mt-4">
             <button
               type="button"
-              className="btn btn-primary"
+              onClick={() => setShowReceive(true)}
+              className="flex flex-col items-center justify-center gap-1.5 w-20 h-20 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-all hover:scale-105 border border-zinc-700 hover:border-amber-500/50"
+            >
+              <div className="w-9 h-9 rounded-full bg-zinc-900 flex items-center justify-center border border-zinc-700">
+                <svg className="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                </svg>
+              </div>
+              <span className="text-xs font-medium text-white">Receive</span>
+            </button>
+            
+            <button
+              type="button"
               onClick={() => {
                 setShowSend(true);
                 setSendError(null);
                 setSendStatus('idle');
               }}
+              className="flex flex-col items-center justify-center gap-1.5 w-20 h-20 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-all hover:scale-105 border border-zinc-700 hover:border-amber-500/50"
             >
-              Send
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => setShowReceive(true)}
-            >
-              Receive
+              <div className="w-9 h-9 rounded-full bg-zinc-900 flex items-center justify-center border border-zinc-700">
+                <svg className="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
+                </svg>
+              </div>
+              <span className="text-xs font-medium text-white">Send</span>
             </button>
           </div>
         </div>
@@ -643,7 +669,7 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
                     <div>
                       <h4 className="font-semibold text-white flex items-center gap-2">
                         ZEC
-                        <span className="text-xs px-2 py-0.5 bg-amber-500/20 text-amber-400 rounded">Native</span>
+                        <span className="text-[0.65rem] px-1.5 py-0.5 bg-amber-500/20 text-amber-400 rounded">Native</span>
                       </h4>
                       <p className="text-xs text-zinc-500">Zcash</p>
                     </div>
@@ -697,7 +723,7 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
               ))}
               
               {zrc20Tokens.length === 0 && (
-                <div className="text-center py-6 border-t border-zinc-700 mt-2">
+                <div className="text-center py-6 mt-2">
                   <p className="text-zinc-400 text-sm mb-1">No ZRC-20 tokens yet</p>
                   <p className="text-xs text-zinc-500">Deploy or mint tokens to see them here</p>
                 </div>

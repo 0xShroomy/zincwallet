@@ -324,6 +324,17 @@ async function handleCreateWallet(data) {
     walletState.isLocked = false;
     walletState.address = address;
     
+    // CRITICAL: Save wallet state to local storage so UI can read it
+    await chrome.storage.local.set({
+      wallet_state: {
+        isLocked: false,
+        isInitialized: true,
+        address: address,
+        balance: 0,
+        network: walletState.network
+      }
+    });
+    
     // Save session state
     await chrome.storage.session.set({
       walletUnlocked: true,
@@ -442,6 +453,17 @@ async function handleUnlockWallet(data) {
     walletState.isLocked = false;
     walletState.balance = 0;
 
+    // CRITICAL: Save wallet state to local storage so UI can read it
+    await chrome.storage.local.set({
+      wallet_state: {
+        isLocked: false,
+        isInitialized: true,
+        address: address,
+        balance: 0,
+        network: walletState.network
+      }
+    });
+
     // Cache in session storage for transaction signing
     await chrome.storage.session.set({
       walletUnlocked: true,
@@ -554,6 +576,17 @@ async function handleLockWallet() {
   walletState.isLocked = true;
   walletState.address = '';
   walletState.balance = 0;
+  
+  // CRITICAL: Save to storage so UI gets notified
+  await chrome.storage.local.set({
+    wallet_state: {
+      isLocked: true,
+      isInitialized: true,
+      address: '',
+      balance: 0,
+      network: walletState.network
+    }
+  });
   
   // Clear session state
   await chrome.storage.session.remove(['walletUnlocked', 'walletAddress', 'unlockTime']);
@@ -682,6 +715,17 @@ async function handleImportWallet(data) {
     walletState.isInitialized = true;
     walletState.isLocked = false;
     walletState.address = address;
+    
+    // CRITICAL: Save wallet state to local storage so UI can read it
+    await chrome.storage.local.set({
+      wallet_state: {
+        isLocked: false,
+        isInitialized: true,
+        address: address,
+        balance: 0,
+        network: walletState.network
+      }
+    });
     
     // Save session state (cache private key for signing)
     await chrome.storage.session.set({
@@ -1158,11 +1202,32 @@ async function handleMintZrc20(data) {
     
     const privateKey = await getPrivateKeyForAddress(walletState.address);
     
-    // TODO: Fetch deploy info from indexer to get mint price and deployer address
-    // const deployInfo = await fetchDeployInfo(deployTxid);
-    // For now, mint payment data will be empty until indexer supports it
-    const mintPrice = 0; // Will come from deployInfo.mintPrice
-    const mintRecipient = null; // Will come from deployInfo.deployerAddress
+    // Fetch deploy info from indexer to get mint price and deployer address
+    let mintPrice = 0;
+    let mintRecipient = null;
+    
+    try {
+      console.log('[Background] Fetching deploy info for:', deployTxid);
+      const proxyUrl = `https://vercel-proxy-loghorizon.vercel.app/api/deploy-info?txid=${deployTxid}&network=${walletState.network}`;
+      const response = await fetch(proxyUrl);
+      
+      if (response.ok) {
+        const deployInfo = await response.json();
+        if (deployInfo.success) {
+          mintPrice = deployInfo.mintPrice || 0;
+          mintRecipient = deployInfo.deployerAddress;
+          console.log('[Background] Deploy info:', {
+            ticker: deployInfo.ticker,
+            mintPrice,
+            mintRecipient
+          });
+        }
+      } else {
+        console.warn('[Background] Deploy info not found, assuming free mint');
+      }
+    } catch (error) {
+      console.warn('[Background] Failed to fetch deploy info, assuming free mint:', error.message);
+    }
     
     const inscription = self.InscriptionBuilder.buildZincInscription('mintZrc20', {
       deployTxid,
@@ -1805,8 +1870,18 @@ async function handleExportWallet(data) {
 
 async function handleRefreshBalance() {
   try {
+    // CRITICAL: Restore wallet state from storage if in-memory state is empty
+    // (Background scripts restart frequently, resetting in-memory variables)
     if (!walletState.address) {
-      throw new Error('No address available');
+      console.log('[Background] Address not in memory, checking storage...');
+      const stored = await chrome.storage.local.get('wallet_state');
+      if (stored.wallet_state && stored.wallet_state.address && !stored.wallet_state.isLocked) {
+        // Restore from storage
+        Object.assign(walletState, stored.wallet_state);
+        console.log('[Background] Restored wallet state from storage:', walletState.address);
+      } else {
+        throw new Error('No address available');
+      }
     }
     
     console.log('[Background] Refreshing balance for:', walletState.address);
@@ -1819,7 +1894,7 @@ async function handleRefreshBalance() {
     
     // IMPORTANT: Save to storage so UI gets notified of balance change
     await chrome.storage.local.set({ 
-      walletState: { 
+      wallet_state: {  // Use wallet_state (with underscore) to match what UI listens for
         ...walletState 
       } 
     });
@@ -2296,14 +2371,17 @@ async function handleDappConnect(origin, metadata) {
   }
   
   // Check if already connected
-  const isConnected = await self.PermissionManager.isConnected(origin);
-  if (isConnected) {
+  if (await self.PermissionManager.hasPermission(origin, 'connect')) {
     const permission = await self.PermissionManager.getPermission(origin);
     console.log('[dApp] Already connected:', origin);
+    
+    // Include public key if wallet is unlocked
+    const publicKey = await getPublicKeyHex();
+    
     return {
       address: walletState.address,
       network: walletState.network,
-      publicKey: null, // TODO: Add if needed
+      publicKey: publicKey,
       connected: true,
       permissions: permission.permissions
     };
@@ -2330,10 +2408,13 @@ async function handleDappConnect(origin, metadata) {
     }
   });
   
+  // Include public key in connection response
+  const publicKey = await getPublicKeyHex();
+  
   return {
     address: walletState.address,
     network: walletState.network,
-    publicKey: null,
+    publicKey: publicKey,
     connected: true
   };
 }
@@ -2461,6 +2542,33 @@ async function handleDappGetAddress(origin) {
 }
 
 /**
+ * Get public key from cached private key
+ */
+async function getPublicKeyHex() {
+  try {
+    // Get cached private key from session
+    const session = await chrome.storage.session.get(['cachedPrivateKey']);
+    const privateKeyHex = session.cachedPrivateKey;
+    
+    if (!privateKeyHex) {
+      return null;
+    }
+    
+    // Derive public key from private key using secp256k1
+    const privateKeyBytes = new Uint8Array(privateKeyHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+    const publicKey = await self.ZcashKeys.getPublicKey(privateKeyBytes);
+    
+    // Convert to hex string
+    const publicKeyHex = Array.from(publicKey).map(b => b.toString(16).padStart(2, '0')).join('');
+    
+    return publicKeyHex;
+  } catch (error) {
+    console.error('[Background] Failed to derive public key:', error);
+    return null;
+  }
+}
+
+/**
  * Handle get public key request
  */
 async function handleDappGetPublicKey(origin) {
@@ -2474,8 +2582,17 @@ async function handleDappGetPublicKey(origin) {
     throw new Error('Wallet is locked');
   }
   
-  // TODO: Implement public key derivation if needed
-  return { publicKey: null };
+  const publicKeyHex = await getPublicKeyHex();
+  
+  if (!publicKeyHex) {
+    throw new Error('Failed to derive public key');
+  }
+  
+  console.log('[Background] Public key provided to dApp:', origin);
+  
+  return { 
+    publicKey: publicKeyHex
+  };
 }
 
 /**

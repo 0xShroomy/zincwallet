@@ -46,7 +46,7 @@ export async function getWalletState(): Promise<WalletState> {
     isInitialized: false,
     address: null,
     balance: 0,
-    network: 'testnet',
+    network: 'mainnet',
   };
 }
 

@@ -17,12 +17,13 @@ function App() {
     checkPendingApproval();
     
     // Listen for storage changes (when background updates balance or approvals)
-    const handleStorageChange = (changes: any) => {
-      console.log('[App] Storage change detected:', Object.keys(changes));
+    const handleStorageChange = (changes: any, areaName: string) => {
+      console.log('[App] Storage change detected in', areaName, ':', Object.keys(changes));
+      console.log('[App] Changed keys:', changes);
       
       // If wallet state changes in storage, reload
-      if (changes.walletState || changes.wallets) {
-        console.log('[App] WalletState changed! Old balance:', changes.walletState?.oldValue?.balance, 'New balance:', changes.walletState?.newValue?.balance);
+      if (changes.wallet_state || changes.walletState || changes.wallets) {
+        console.log('[App] WalletState changed! Old:', changes.wallet_state?.oldValue, 'New:', changes.wallet_state?.newValue);
         loadWalletState();
       }
       
@@ -56,9 +57,12 @@ function App() {
     try {
       console.log('[App] Loading wallet state...');
       
-      // STEP 1: ALWAYS check storage first (most reliable)
-      const stored = await browser.storage.local.get(['wallets', 'encryptedSeed']);
+      // STEP 1: Read wallet state DIRECTLY from storage (instant, reliable)
+      // Storage is the single source of truth - background script updates it
+      const stored = await browser.storage.local.get(['wallet_state', 'wallets', 'encryptedSeed']);
       console.log('[App] Storage check:', { 
+        hasWalletState: !!stored.wallet_state,
+        walletState: stored.wallet_state,
         hasWallets: !!stored.wallets, 
         walletCount: stored.wallets?.length || 0,
         hasLegacySeed: !!stored.encryptedSeed 
@@ -66,9 +70,9 @@ function App() {
       
       const hasWallets = (stored.wallets && stored.wallets.length > 0) || !!stored.encryptedSeed;
       
-      // If no wallets exist in storage, definitely show onboarding
+      // If no wallets exist in storage, show onboarding
       if (!hasWallets) {
-        console.log('[App] No wallets found in storage - showing onboarding');
+        console.log('[App] No wallets found - showing onboarding');
         setWalletState({ 
           isInitialized: false, 
           isLocked: false, 
@@ -80,52 +84,25 @@ function App() {
         return;
       }
       
-      // STEP 2: Wallets exist, now get full state from background script
-      console.log('[App] Wallets found, requesting full state from background...');
+      // STEP 2: Use wallet state from storage directly
+      // This is instant, reliable, and accurate - no race conditions!
+      const walletState = stored.wallet_state || {
+        isInitialized: true,
+        isLocked: true, // Default to locked if no state stored yet
+        address: '',
+        balance: 0,
+        network: 'mainnet'
+      };
       
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Background script timeout')), 3000)
-      );
+      // Ensure isInitialized matches storage reality
+      walletState.isInitialized = hasWallets;
       
-      const messagePromise = browser.runtime.sendMessage({
-        type: 'WALLET_ACTION',
-        action: 'GET_STATE',
-        data: {},
-      });
-      
-      try {
-        const response = await Promise.race([messagePromise, timeoutPromise]);
-        console.log('[App] Background state response:', response);
-        
-        // CRITICAL: ALWAYS use storage as source of truth for isInitialized
-        // Background may be in any state (initializing, crashed, out of sync)
-        // Storage is reliable and synchronous - trust it completely
-        const backgroundSaidInitialized = response.isInitialized;
-        response.isInitialized = hasWallets;
-        
-        if (backgroundSaidInitialized !== hasWallets) {
-          console.warn('[App] Background/storage mismatch - trusting storage:', { 
-            storage: hasWallets, 
-            background: backgroundSaidInitialized 
-          });
-        }
-        
-        setWalletState(response as WalletState);
-      } catch (bgError) {
-        // Background script failed, but we know wallets exist from storage
-        console.warn('[App] Background script not responding, using storage data');
-        setWalletState({ 
-          isInitialized: true, 
-          isLocked: true, 
-          address: '', 
-          balance: 0, 
-          network: 'mainnet' 
-        });
-      }
+      console.log('[App] Wallet state from storage:', walletState);
+      setWalletState(walletState as WalletState);
       
     } catch (error) {
       console.error('[App] Critical error loading wallet state:', error);
-      // Even on error, try to check storage one more time
+      // Fallback: Check if wallet exists, default to locked
       const stored = await browser.storage.local.get(['wallets', 'encryptedSeed']);
       const isInitialized = (stored.wallets && stored.wallets.length > 0) || !!stored.encryptedSeed;
       

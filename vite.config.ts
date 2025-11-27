@@ -40,7 +40,6 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
       '@/shared': path.resolve(__dirname, './src/shared'),
       '@/popup': path.resolve(__dirname, './src/popup'),
-      '@/background': path.resolve(__dirname, './src/background'),
       '@/types': path.resolve(__dirname, './src/types'),
     },
   },

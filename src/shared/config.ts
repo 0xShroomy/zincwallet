@@ -1,8 +1,8 @@
 import type { WalletConfig } from '@/types/wallet';
 
 export const DEFAULT_CONFIG: WalletConfig = {
-  network: (import.meta.env.VITE_NETWORK as 'mainnet' | 'testnet') || 'testnet',
-  lightwalletdUrl: import.meta.env.VITE_LIGHTWALLETD_URL || 'https://testnet.lightwalletd.com:9067',
+  network: (import.meta.env.VITE_NETWORK as 'mainnet' | 'testnet') || 'mainnet',
+  lightwalletdUrl: import.meta.env.VITE_LIGHTWALLETD_URL || 'https://mainnet.lightwalletd.com:9067',
   zincTreasuryAddress: import.meta.env.VITE_ZINC_TREASURY_ADDRESS || 't1VShSWJZT9yDtGLp8vkyRUxVnb7i8d3zWp',
   zincMinTip: parseInt(import.meta.env.VITE_ZINC_MIN_TIP || '150000', 10),
 };
