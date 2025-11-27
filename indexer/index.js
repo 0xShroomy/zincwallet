@@ -299,10 +299,61 @@ function parseZincCoreInscription(buffer, operation) {
 
 // Parse Marketplace inscription (protocol ID 0x02)
 function parseMarketplaceInscription(buffer, operation) {
-  // Marketplace operations: listing, bid, accept, cancel
-  // Implementation depends on marketplace spec
-  console.log(`  📋 Marketplace operation: ${operation}`);
-  return null; // Not implemented yet
+  try {
+    let offset = 2; // Skip magic byte and proto/op byte
+    
+    // Operation 0x00 = List (create listing)
+    if (operation === 0x00) {
+      // List operation: [listingId: 32 bytes][...other listing data]
+      if (buffer.length < offset + 32) {
+        console.log(`  ⚠️ Insufficient data for marketplace list operation`);
+        return null;
+      }
+      
+      const listingId = buffer.slice(offset, offset + 32).toString('hex');
+      offset += 32;
+      
+      console.log(`  ✅ Marketplace List: listingId=${listingId.substring(0, 16)}...`);
+      
+      return {
+        protocol: 'zinc',
+        subProtocol: 'marketplace',
+        operation: 'list',
+        data: {
+          listingId: listingId,
+          rawData: buffer.slice(2).toString('hex') // Store full data for reference
+        }
+      };
+    }
+    
+    // Operation 0x01 = Claim (accept/purchase listing)
+    else if (operation === 0x01) {
+      // Claim operation: [listingId: 32 bytes]
+      if (buffer.length < offset + 32) {
+        console.log(`  ⚠️ Insufficient data for marketplace claim operation`);
+        return null;
+      }
+      
+      const listingId = buffer.slice(offset, offset + 32).toString('hex');
+      
+      console.log(`  ✅ Marketplace Claim: listingId=${listingId.substring(0, 16)}...`);
+      
+      return {
+        protocol: 'zinc',
+        subProtocol: 'marketplace',
+        operation: 'claim',
+        data: {
+          listingId: listingId
+        }
+      };
+    }
+    
+    console.log(`  ⚠️ Unknown marketplace operation: ${operation}`);
+    return null;
+  } catch (error) {
+    console.log(`  ⚠️ Error parsing marketplace inscription: ${error.message}`);
+    return null;
+  }
 }
 
 // Parse Zerdinals inscription from ScriptSig (inputs)
@@ -521,6 +572,22 @@ async function processTransaction(txid, blockHeight, txData = null) {
       // (Different from Zinc - may need separate handler)
       if (inscription.subProtocol === 'brc-20' || inscription.subProtocol === 'zrc-20') {
         await processZRC20Inscription(inscription, txid, tx);
+      }
+      
+      // Process ZRC-721 (NFT) inscriptions
+      if (inscription.subProtocol === 'zrc-721' && inscription.operation === 'mint') {
+        const ownerAddress = input.recipient || null;
+        if (ownerAddress) {
+          await supabase.from('nft_ownership').upsert({
+            address: ownerAddress,
+            collection: inscription.data.collection,
+            token_id: inscription.data.id,
+            metadata: inscription.data,
+            txid: txid,
+            network: NETWORK
+          });
+          console.log(`  ✅ Saved NFT ownership: ${inscription.data.collection} #${inscription.data.id} → ${ownerAddress.substring(0, 10)}...`);
+        }
       }
     }
     
