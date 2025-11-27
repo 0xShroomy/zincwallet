@@ -294,26 +294,30 @@ self.ZcashTransaction = (function() {
       // Double SHA-256
       const hash = await hash256(sigHash);
       
-      // Sign using secp256k1 (we'll need to implement this properly)
-      // For now, this is a placeholder that will need noble/secp256k1
       console.log('[ZcashTx] Signing input', i, 'hash:', bytesToHex(hash));
       
-      // This requires @noble/secp256k1 which we'll add
-      // For now, create a placeholder signature
-      const signature = new Uint8Array(71); // DER-encoded signature placeholder
-      signature[0] = 0x30; // DER sequence
-      signature[1] = 0x45; // Length
+      // REAL SIGNING using FixedZcashKeys
+      if (!self.FixedZcashKeys) {
+        throw new Error('FixedZcashKeys not loaded! Cannot sign transaction.');
+      }
       
-      // Build scriptSig: <signature> <pubkey>
-      // We need the public key from the private key
-      // This also requires secp256k1
-      const publicKey = new Uint8Array(33); // Compressed public key placeholder
+      // Get DER signature from secp256k1
+      const derSignature = self.FixedZcashKeys.signHash(hash, privateKey);
       
-      const scriptSig = new Uint8Array(signature.length + 1 + publicKey.length + 1);
+      // Append SIGHASH_ALL (0x01) to signature for Zcash
+      const signatureWithHashType = new Uint8Array(derSignature.length + 1);
+      signatureWithHashType.set(derSignature);
+      signatureWithHashType[derSignature.length] = 0x01; // SIGHASH_ALL
+      
+      // Get public key from private key
+      const publicKey = self.FixedZcashKeys.getPublicKey(privateKey);
+      
+      // Build scriptSig: <sig_length> <signature+hashtype> <pubkey_length> <pubkey>
+      const scriptSig = new Uint8Array(signatureWithHashType.length + 1 + publicKey.length + 1);
       let offset = 0;
-      scriptSig[offset++] = signature.length;
-      scriptSig.set(signature, offset);
-      offset += signature.length;
+      scriptSig[offset++] = signatureWithHashType.length;
+      scriptSig.set(signatureWithHashType, offset);
+      offset += signatureWithHashType.length;
       scriptSig[offset++] = publicKey.length;
       scriptSig.set(publicKey, offset);
       
