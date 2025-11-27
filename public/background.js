@@ -2320,24 +2320,14 @@ async function handleSendZec(data) {
     const txHex = self.ZcashTransaction.serializeTransaction(signedTx);
     
     console.log('[Background] Transaction hex:', txHex);
+    console.log('[Background] Transaction hex length:', txHex.length, 'bytes:', txHex.length / 2);
     
-    // VALIDATE transaction with Blockchair before broadcasting
-    console.log('[Background] Validating transaction with Blockchair...');
-    try {
-      const validateUrl = `https://api.blockchair.com/zcash/raw/validate?data=${txHex}&key=A___EsSizQQ9Y2ukrBGc1X6tGbsogmFz`;
-      const validateResponse = await fetch(validateUrl);
-      const validateData = await validateResponse.json();
-      console.log('[Background] Blockchair validation response:', validateData);
-      
-      if (!validateData.data || validateData.context?.error) {
-        console.error('[Background] ❌ Transaction validation FAILED:', validateData.context?.error || 'Unknown error');
-        throw new Error(`Transaction validation failed: ${validateData.context?.error || 'Invalid format'}`);
-      }
-      console.log('[Background] ✓ Transaction validation PASSED!');
-    } catch (error) {
-      console.error('[Background] Validation error:', error);
-      throw new Error(`Transaction validation failed: ${error.message}`);
-    }
+    // Decode transaction for debugging
+    console.log('[Background] Transaction breakdown:');
+    console.log('  - Version:', txHex.substring(0, 8));
+    console.log('  - Group ID:', txHex.substring(8, 16));
+    console.log('  - First 100 chars:', txHex.substring(0, 100));
+    console.log('  - Last 20 chars:', txHex.substring(txHex.length - 20));
     
     // Broadcast transaction
     console.log('[Background] Broadcasting transaction...');
