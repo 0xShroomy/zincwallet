@@ -205,7 +205,7 @@ self.ZcashTransaction = (function() {
     
     return {
       version: 5 | (1 << 31), // Zcash v5 with Overwinter bit
-      consensusBranchId: 0xC2D6D0B4, // NU5 consensus branch
+      consensusBranchId: 0xC8E71055, // NU6 consensus branch (current as of Nov 2024)
       inputs: utxos.map(utxo => ({
         txid: utxo.txid,
         vout: utxo.vout,
@@ -232,7 +232,7 @@ self.ZcashTransaction = (function() {
     // 2. nVersionGroupId (v5 = 0x26A7270A)
     buffer.push(...encodeUint32LE(0x26A7270A));
     
-    // 3. Consensus Branch ID (NU5)
+    // 3. Consensus Branch ID (NU6 = 0xC8E71055)
     buffer.push(...encodeUint32LE(tx.consensusBranchId));
     
     // 4. hashPrevouts (double SHA256 of all input outpoints)
@@ -379,7 +379,7 @@ self.ZcashTransaction = (function() {
     // Group ID (v5 = 0x26A7270A)
     buffer.push(...encodeUint32LE(0x26A7270A));
     
-    // Consensus Branch ID (NU5)
+    // Consensus Branch ID (NU6 = 0xC8E71055)
     buffer.push(...encodeUint32LE(tx.consensusBranchId));
     
     // Lock time (moved before inputs in v5!)
