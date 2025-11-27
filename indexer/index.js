@@ -481,9 +481,13 @@ async function processTransaction(txid, blockHeight, txData = null) {
     }
     
     // 2. Check inputs for Zerdinals (ScriptSig)
+    console.log(`  🔍 Checking ${tx.inputs?.length || 0} inputs for Zerdinals...`);
+    
     for (const input of tx.inputs || []) {
       // Zerdinals inscriptions are in spending_signature_hex, not script_hex!
       const scriptSigHex = input.spending_signature_hex;
+      
+      console.log(`  🔎 Input has spending_signature_hex: ${!!scriptSigHex}, length: ${scriptSigHex?.length || 0}`);
       
       if (!scriptSigHex) continue;
       
