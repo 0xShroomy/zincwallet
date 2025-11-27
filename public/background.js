@@ -254,27 +254,46 @@ async function initWalletState() {
   }
   
   // Check if wallet was previously unlocked (within session)
-  const session = await chrome.storage.session.get(['walletUnlocked', 'walletAddress', 'unlockTime', 'activeWalletId']);
+  const session = await chrome.storage.session.get(['walletUnlocked', 'walletAddress', 'unlockTime', 'activeWalletId', 'cachedPrivateKey']);
   
   if (session.walletUnlocked && session.walletAddress && session.activeWalletId === activeWalletId) {
-    // Check if session is still valid (30 minute timeout)
-    const now = Date.now();
-    const unlockTime = session.unlockTime || 0;
-    const thirtyMinutes = 30 * 60 * 1000;
-    
-    if (now - unlockTime < thirtyMinutes) {
-      walletState.isLocked = false;
-      walletState.address = session.walletAddress;
-      console.log('[Background] Restored wallet session:', walletState.address);
+    // CRITICAL: Check if private key still exists in session
+    // Service worker restarts clear session storage, losing the private key
+    if (!session.cachedPrivateKey) {
+      console.log('[Background] Session lost private key - auto-locking wallet');
+      walletState.isLocked = true;
+      walletState.address = '';
       
-      // Auto-refresh balance after session restore
-      handleRefreshBalance().catch(err => {
-        console.warn('[Background] Auto-refresh balance failed:', err);
+      // Update storage so UI shows locked state
+      await chrome.storage.local.set({
+        wallet_state: {
+          ...walletState,
+          isLocked: true
+        }
       });
+      
+      // Clear invalid session
+      await chrome.storage.session.clear();
     } else {
-      // Session expired, clear it
-      await chrome.storage.session.remove(['walletUnlocked', 'walletAddress', 'unlockTime', 'activeWalletId']);
-      console.log('[Background] Wallet session expired');
+      // Check if session is still valid (30 minute timeout)
+      const now = Date.now();
+      const unlockTime = session.unlockTime || 0;
+      const thirtyMinutes = 30 * 60 * 1000;
+      
+      if (now - unlockTime < thirtyMinutes) {
+        walletState.isLocked = false;
+        walletState.address = session.walletAddress;
+        console.log('[Background] Restored wallet session:', walletState.address);
+        
+        // Auto-refresh balance after session restore
+        handleRefreshBalance().catch(err => {
+          console.warn('[Background] Auto-refresh balance failed:', err);
+        });
+      } else {
+        // Session expired, clear it
+        await chrome.storage.session.remove(['walletUnlocked', 'walletAddress', 'unlockTime', 'activeWalletId', 'cachedPrivateKey']);
+        console.log('[Background] Wallet session expired');
+      }
     }
   }
   
@@ -3065,16 +3084,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           case 'ESTIMATE_FEE':
             result = await handleEstimateFee(message.data);
             break;
-          
-          case 'CHECK_SESSION': {
-            // Check if session has cached private key
-            const session = await chrome.storage.session.get(['cachedPrivateKey']);
-            result = {
-              success: true,
-              hasPrivateKey: !!session.cachedPrivateKey
-            };
-            break;
-          }
           
           case 'SEND_ZEC':
             result = await handleSendZec(message.data);
