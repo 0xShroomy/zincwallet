@@ -483,34 +483,6 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
     }
   }
 
-  async function estimateFees() {
-    const amountNumber = Number(sendAmount);
-    if (!sendAmount || !Number.isFinite(amountNumber) || amountNumber <= 0) {
-      setFeeEstimates(null);
-      return;
-    }
-
-    setEstimatingFee(true);
-    try {
-      const response = await browser.runtime.sendMessage({
-        type: 'WALLET_ACTION',
-        action: 'ESTIMATE_FEE',
-        data: {
-          to: sendTo || 't1placeholder',
-          amountZec: amountNumber,
-        },
-      });
-
-      if (response.success) {
-        setFeeEstimates(response.fees);
-      }
-    } catch (error) {
-      console.error('Failed to estimate fees:', error);
-    } finally {
-      setEstimatingFee(false);
-    }
-  }
-
   function handleAddressChange(value: string) {
     setSendTo(value);
     
@@ -535,8 +507,9 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
     }
   }
 
-  function handleProceedToConfirmation(event: FormEvent<HTMLFormElement>) {
+  async function handleProceedToConfirmation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    console.log('[Dashboard] Continue clicked, sendTo:', sendTo, 'sendAmount:', sendAmount);
     setSendError(null);
     setAddressError(null);
     setAmountError(null);
@@ -544,22 +517,57 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
     // Final validation before showing confirmation
     const addressValidation = validateZcashAddress(sendTo);
     if (!addressValidation.valid) {
+      console.log('[Dashboard] Address validation failed:', addressValidation.error);
       setAddressError(addressValidation.error || 'Invalid address');
       return;
     }
 
     const amountValidation = validateZecAmount(sendAmount, walletState.balance);
     if (!amountValidation.valid) {
+      console.log('[Dashboard] Amount validation failed:', amountValidation.error);
       setAmountError(amountValidation.error || 'Invalid amount');
       return;
     }
 
+    // Estimate fees now if not already done
     if (!feeEstimates) {
-      setSendError('Please wait for fee estimation to complete');
-      return;
+      console.log('[Dashboard] No fee estimates yet, estimating now...');
+      setEstimatingFee(true);
+      
+      try {
+        const response = await browser.runtime.sendMessage({
+          type: 'WALLET_ACTION',
+          action: 'ESTIMATE_FEE',
+          data: {
+            to: sendTo || 't1placeholder',
+            amountZec: Number(sendAmount),
+          },
+        });
+        
+        console.log('[Dashboard] Fee estimation response:', response);
+        
+        if (!response.success || !response.fees) {
+          console.log('[Dashboard] Fee estimation failed:', response.error);
+          setSendError(response.error || 'Failed to estimate transaction fees. Please try again.');
+          setEstimatingFee(false);
+          return;
+        }
+        
+        // Set fees and immediately proceed
+        setFeeEstimates(response.fees);
+        console.log('[Dashboard] Fees estimated, proceeding to confirmation');
+      } catch (error: any) {
+        console.error('[Dashboard] Fee estimation error:', error);
+        setSendError('Failed to estimate transaction fees. Please try again.');
+        setEstimatingFee(false);
+        return;
+      } finally {
+        setEstimatingFee(false);
+      }
     }
 
     // Show confirmation modal
+    console.log('[Dashboard] All validation passed, showing confirmation');
     setShowConfirmation(true);
   }
 
@@ -1023,11 +1031,7 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
                 <input
                   className={`input ${amountError ? 'border-red-500 focus:border-red-500' : ''}`}
                   value={sendAmount}
-                  onChange={(e) => {
-                    handleAmountChange(e.target.value);
-                    // Estimate fees when amount changes
-                    setTimeout(() => estimateFees(), 500);
-                  }}
+                  onChange={(e) => handleAmountChange(e.target.value)}
                   placeholder="0.001"
                 />
                 {amountError && (
@@ -1121,9 +1125,9 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
                 <button
                   type="submit"
                   className="btn btn-primary"
-                  disabled={sendStatus === 'sending' || !!addressError || !!amountError || !feeEstimates}
+                  disabled={sendStatus === 'sending' || estimatingFee || !!addressError || !!amountError}
                 >
-                  Continue
+                  {estimatingFee ? 'Estimating...' : 'Continue'}
                 </button>
               </div>
             </form>
@@ -1132,76 +1136,64 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
       )}
 
       {showConfirmation && feeEstimates && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-zinc-darker border border-zinc-700 rounded-xl p-6 w-full max-w-md mx-4">
-            <h2 className="text-lg font-semibold text-white mb-4">Confirm Transaction</h2>
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-darker border border-zinc-700 rounded-xl w-full max-w-md flex flex-col max-h-[90vh]">
+            <div className="p-4 border-b border-zinc-700">
+              <h2 className="text-lg font-semibold text-white">Confirm Transaction</h2>
+            </div>
             
-            <div className="space-y-4">
-              <div className="bg-amber-500/10 border border-amber-500/50 rounded-lg p-3">
-                <p className="text-sm text-amber-400">
-                  ⚠️ Please review the transaction details carefully before confirming
-                </p>
+            <div className="overflow-y-auto px-4 py-3 space-y-3">
+              <div className="bg-amber-500/10 border border-amber-500/50 rounded-lg p-2.5">
+                <p className="text-xs text-amber-400">⚠️ Review carefully before confirming</p>
               </div>
 
-              <div className="bg-zinc-800 rounded-lg p-4 space-y-3">
+              <div className="bg-zinc-800 rounded-lg p-3 space-y-2.5">
                 <div>
-                  <p className="text-xs text-zinc-500 mb-1">Sending to</p>
-                  <p className="text-sm text-white font-mono break-all">{sendTo}</p>
+                  <p className="text-xs text-zinc-500">Sending to</p>
+                  <p className="text-xs text-white font-mono break-all leading-tight mt-1">{sendTo}</p>
                 </div>
                 
-                <div className="border-t border-zinc-700 pt-3">
-                  <p className="text-xs text-zinc-500 mb-1">Amount</p>
-                  <p className="text-lg text-white font-semibold">{sendAmount} ZEC</p>
-                  <p className="text-xs text-zinc-500">
-                    ≈ ${((Number(sendAmount) || 0) * (zecPriceUsd || 0)).toFixed(2)}
-                  </p>
+                <div className="border-t border-zinc-700 pt-2.5">
+                  <p className="text-xs text-zinc-500">Amount</p>
+                  <p className="text-base text-white font-semibold">{sendAmount} ZEC</p>
+                  <p className="text-xs text-zinc-500">≈ ${((Number(sendAmount) || 0) * (zecPriceUsd || 0)).toFixed(2)}</p>
                 </div>
                 
-                <div className="border-t border-zinc-700 pt-3">
-                  <p className="text-xs text-zinc-500 mb-1">Network Fee ({feeSpeed})</p>
-                  <p className="text-sm text-white">
-                    {(feeEstimates[feeSpeed].zatoshis / 100000000).toFixed(8)} ZEC
-                  </p>
-                  <p className="text-xs text-zinc-500">
-                    ≈ ${((feeEstimates[feeSpeed].zatoshis / 100000000) * (zecPriceUsd || 0)).toFixed(4)}
-                  </p>
+                <div className="border-t border-zinc-700 pt-2.5">
+                  <p className="text-xs text-zinc-500">Network Fee ({feeSpeed})</p>
+                  <p className="text-sm text-white">{(feeEstimates[feeSpeed].zatoshis / 100000000).toFixed(8)} ZEC</p>
+                  <p className="text-xs text-zinc-500">≈ ${((feeEstimates[feeSpeed].zatoshis / 100000000) * (zecPriceUsd || 0)).toFixed(4)}</p>
                 </div>
                 
-                <div className="border-t border-zinc-700 pt-3">
-                  <p className="text-xs text-zinc-500 mb-1">Total</p>
-                  <p className="text-xl text-amber-400 font-bold">
-                    {(Number(sendAmount) + (feeEstimates[feeSpeed].zatoshis / 100000000)).toFixed(8)} ZEC
-                  </p>
-                  <p className="text-xs text-zinc-500">
-                    ≈ ${((Number(sendAmount) + (feeEstimates[feeSpeed].zatoshis / 100000000)) * (zecPriceUsd || 0)).toFixed(2)}
-                  </p>
+                <div className="border-t border-zinc-700 pt-2.5">
+                  <p className="text-xs text-zinc-500">Total</p>
+                  <p className="text-lg text-amber-400 font-bold">{(Number(sendAmount) + (feeEstimates[feeSpeed].zatoshis / 100000000)).toFixed(8)} ZEC</p>
+                  <p className="text-xs text-zinc-500">≈ ${((Number(sendAmount) + (feeEstimates[feeSpeed].zatoshis / 100000000)) * (zecPriceUsd || 0)).toFixed(2)}</p>
                 </div>
               </div>
 
-              <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-3">
-                <p className="text-xs text-zinc-400">
-                  <span className="text-white font-medium">Note:</span> This transaction cannot be reversed once confirmed.
-                </p>
+              <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-2.5">
+                <p className="text-xs text-zinc-400"><span className="text-white font-medium">Note:</span> This transaction cannot be reversed once confirmed.</p>
               </div>
+            </div>
 
-              <div className="flex gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmation(false)}
-                  className="flex-1 btn btn-secondary"
-                  disabled={sendStatus === 'sending'}
-                >
-                  Back
-                </button>
-                <button
-                  type="button"
-                  onClick={confirmSendTransaction}
-                  className="flex-1 bg-amber-600 hover:bg-amber-700 text-white font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
-                  disabled={sendStatus === 'sending'}
-                >
-                  {sendStatus === 'sending' ? 'Sending...' : 'Confirm & Send'}
-                </button>
-              </div>
+            <div className="p-4 border-t border-zinc-700 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowConfirmation(false)}
+                className="flex-1 btn btn-secondary py-2"
+                disabled={sendStatus === 'sending'}
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                onClick={confirmSendTransaction}
+                className="flex-1 bg-amber-600 hover:bg-amber-700 text-white font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
+                disabled={sendStatus === 'sending'}
+              >
+                {sendStatus === 'sending' ? 'Sending...' : 'Confirm & Send'}
+              </button>
             </div>
           </div>
         </div>

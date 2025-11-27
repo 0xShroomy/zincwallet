@@ -99,9 +99,9 @@ self.ZcashTransaction = (function() {
   /**
    * Build P2PKH scriptPubKey from address
    */
-  function addressToScriptPubKey(address) {
+  async function addressToScriptPubKey(address) {
     // This will use the base58 decode from ZcashKeys
-    const decoded = self.ZcashKeys.base58Decode(address);
+    const decoded = await self.ZcashKeys.base58Decode(address);
     const pubKeyHash = decoded.slice(2, 22); // Skip 2-byte prefix
     
     // Build P2PKH: OP_DUP OP_HASH160 <20 bytes> OP_EQUALVERIFY OP_CHECKSIG
@@ -174,7 +174,7 @@ self.ZcashTransaction = (function() {
         // Regular P2PKH output
         txOutputs.push({
           value: BigInt(Math.round(output.amount * 100000000)), // ZEC to zatoshis
-          script: addressToScriptPubKey(output.address)
+          script: await addressToScriptPubKey(output.address)
         });
         totalOutput += BigInt(Math.round(output.amount * 100000000));
       }
@@ -199,7 +199,7 @@ self.ZcashTransaction = (function() {
     if (changeAmount > 546n) { // Dust threshold
       txOutputs.push({
         value: changeAmount,
-        script: addressToScriptPubKey(changeAddress)
+        script: await addressToScriptPubKey(changeAddress)
       });
     }
     
