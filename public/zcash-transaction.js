@@ -204,7 +204,7 @@ self.ZcashTransaction = (function() {
     }
     
     return {
-      version: 4, // Zcash v4 (Sapling)
+      version: 4 | (1 << 31), // Zcash v4 with Overwinter bit set (0x80000004 = 2147483652)
       inputs: utxos.map(utxo => ({
         txid: utxo.txid,
         vout: utxo.vout,
