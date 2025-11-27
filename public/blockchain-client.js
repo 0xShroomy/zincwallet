@@ -58,7 +58,7 @@ self.LightwalletdClient = (function() {
     
     if (!proxyUrl || proxyUrl.includes('YOUR-VERCEL-APP')) {
       console.error('[Lightwalletd] ❌ PROXY NOT CONFIGURED!');
-      console.error('[Lightwalletd] Please deploy the Vercel proxy and update PROXY_URL in lightwalletd-client.js');
+      console.error('[Lightwalletd] Please deploy the Vercel proxy and update PROXY_URL in blockchain-client.js');
       return { balance: 0, transactions: 0 };
     }
     
@@ -108,40 +108,68 @@ self.LightwalletdClient = (function() {
     
     const proxyUrl = NETWORKS[currentNetwork].proxyUrl;
     
-    if (!proxyUrl || proxyUrl.includes('YOUR-VERCEL-APP')) {
-      console.error('[Lightwalletd] ❌ PROXY NOT CONFIGURED!');
-      return [];
+    // Try proxy first
+    if (proxyUrl && !proxyUrl.includes('YOUR-VERCEL-APP')) {
+      try {
+        const apiUrl = `${proxyUrl}/utxos?address=${address}`;
+        console.log('[Lightwalletd] Querying proxy:', apiUrl);
+        
+        const response = await fetch(apiUrl, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+          },
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          
+          if (data.success && Array.isArray(data.utxos)) {
+            console.log('[Lightwalletd] ✓ Found', data.utxos.length, 'UTXOs via proxy');
+            console.log('[Lightwalletd] ✓ Source:', data.source);
+            return data.utxos;
+          }
+        }
+        
+        console.warn(`[Lightwalletd] Proxy failed (${response.status}), falling back to direct Blockchair`);
+      } catch (error) {
+        console.warn('[Lightwalletd] Proxy error, falling back to direct Blockchair:', error.message);
+      }
     }
     
+    // Fallback: Direct Blockchair API
     try {
-      const apiUrl = `${proxyUrl}/utxos?address=${address}`;
-      console.log('[Lightwalletd] Querying proxy:', apiUrl);
+      const blockchairUrl = `https://api.blockchair.com/zcash/dashboards/address/${address}?key=A___EsSizQQ9Y2ukrBGc1X6tGbsogmFz`;
+      console.log('[Lightwalletd] Querying Blockchair directly:', blockchairUrl);
       
-      const response = await fetch(apiUrl, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-        },
-      });
-      
+      const response = await fetch(blockchairUrl);
       if (!response.ok) {
-        console.error(`[Lightwalletd] Proxy returned ${response.status}`);
+        console.error('[Lightwalletd] Blockchair returned', response.status);
         return [];
       }
       
       const data = await response.json();
+      const addressData = data.data?.[address];
       
-      if (data.success && Array.isArray(data.utxos)) {
-        console.log('[Lightwalletd] ✓ Found', data.utxos.length, 'UTXOs');
-        console.log('[Lightwalletd] ✓ Source:', data.source);
-        return data.utxos;
-      } else {
-        console.error('[Lightwalletd] Proxy error:', data.error);
+      if (!addressData || !addressData.utxo) {
+        console.log('[Lightwalletd] No UTXOs found');
         return [];
       }
       
+      // Convert Blockchair UTXO format
+      const utxos = addressData.utxo.map(utxo => ({
+        txid: utxo.transaction_hash,
+        vout: utxo.index,
+        value: utxo.value,
+        scriptPubKey: utxo.script_hex,
+        height: utxo.block_id
+      }));
+      
+      console.log('[Lightwalletd] ✓ Found', utxos.length, 'UTXOs via Blockchair');
+      return utxos;
+      
     } catch (error) {
-      console.error('[Lightwalletd] Failed to fetch UTXOs:', error.message);
+      console.error('[Lightwalletd] Blockchair fallback failed:', error.message);
       return [];
     }
   }
@@ -173,49 +201,81 @@ self.LightwalletdClient = (function() {
   }
   
   /**
-   * Broadcast transaction via Vercel proxy
+   * Broadcast transaction via Vercel proxy with Blockchair fallback
    */
   async function broadcastTransaction(txHex) {
     console.log(`[Lightwalletd] Broadcasting transaction (${txHex.length} bytes)`);
     
     const proxyUrl = NETWORKS[currentNetwork].proxyUrl;
     
-    if (!proxyUrl || proxyUrl.includes('YOUR-VERCEL-APP')) {
-      throw new Error('Proxy not configured. Please deploy Vercel proxy first.');
+    // Try proxy first
+    if (proxyUrl && !proxyUrl.includes('YOUR-VERCEL-APP')) {
+      try {
+        const apiUrl = `${proxyUrl}/broadcast`;
+        console.log('[Lightwalletd] Broadcasting via proxy:', apiUrl);
+        
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+          },
+          body: JSON.stringify({ txHex })
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          
+          if (data.success && data.txid) {
+            console.log('[Lightwalletd] ✓ Transaction broadcast successful via proxy!');
+            console.log('[Lightwalletd] ✓ TXID:', data.txid);
+            console.log('[Lightwalletd] ✓ Source:', data.source);
+            return data.txid;
+          }
+        }
+        
+        console.warn(`[Lightwalletd] Proxy broadcast failed (${response.status}), falling back to Blockchair`);
+      } catch (error) {
+        console.warn('[Lightwalletd] Proxy error, falling back to Blockchair:', error.message);
+      }
     }
     
+    // Fallback: Direct Blockchair push API
     try {
-      const apiUrl = `${proxyUrl}/broadcast`;
-      console.log('[Lightwalletd] Broadcasting via proxy:', apiUrl);
+      const blockchairUrl = `https://api.blockchair.com/zcash/push/transaction?key=A___EsSizQQ9Y2ukrBGc1X6tGbsogmFz`;
+      console.log('[Lightwalletd] Broadcasting via Blockchair:', blockchairUrl);
       
-      const response = await fetch(apiUrl, {
+      const response = await fetch(blockchairUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Accept': 'application/json',
         },
-        body: JSON.stringify({ txHex })
+        body: JSON.stringify({
+          data: txHex
+        })
       });
       
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('[Lightwalletd] Broadcast failed:', errorData);
-        throw new Error(errorData.error || `Proxy returned ${response.status}`);
+        const errorText = await response.text();
+        console.error('[Lightwalletd] Blockchair returned', response.status, errorText);
+        throw new Error(`Blockchair broadcast failed: ${response.status}`);
       }
       
       const data = await response.json();
       
-      if (data.success && data.txid) {
-        console.log('[Lightwalletd] ✓ Transaction broadcast successful!');
-        console.log('[Lightwalletd] ✓ TXID:', data.txid);
-        console.log('[Lightwalletd] ✓ Source:', data.source);
-        return data.txid;
+      if (data.data && data.data.transaction_hash) {
+        const txid = data.data.transaction_hash;
+        console.log('[Lightwalletd] ✓ Transaction broadcast successful via Blockchair!');
+        console.log('[Lightwalletd] ✓ TXID:', txid);
+        return txid;
+      } else if (data.context && data.context.error) {
+        throw new Error(`Blockchair error: ${data.context.error}`);
       } else {
-        throw new Error(data.error || 'Broadcast failed');
+        throw new Error('Broadcast failed: Unknown error');
       }
       
     } catch (error) {
-      console.error('[Lightwalletd] Broadcast error:', error.message);
+      console.error('[Lightwalletd] Broadcast failed:', error.message);
       throw error;
     }
   }

@@ -13,7 +13,7 @@ importScripts('crypto-js.min.js'); // For RIPEMD160
 importScripts('bip39.js');
 importScripts('fix-zcash-keys.js'); // REAL secp256k1 implementation - MUST load before zcash-keys.js
 importScripts('zcash-keys.js');
-importScripts('lightwalletd-client.js');
+importScripts('blockchain-client.js');
 importScripts('zcash-transaction.js');
 importScripts('inscription-builder.js'); // Zinc & Zerdinals inscription support
 importScripts('transaction-builder.js'); // Transaction building with inscription support
