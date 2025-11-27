@@ -771,3 +771,4 @@ console.log(`\n✅ Initial scan complete. Now monitoring every ${SCAN_INTERVAL /
 setInterval(async () => {
   await scanBlocks();
 }, SCAN_INTERVAL);
+// Force redeploy with latest fixes
