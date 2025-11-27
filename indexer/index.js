@@ -99,6 +99,8 @@ async function fetchBlockTransactions(blockHeight) {
 }
 
 // Parse Zinc inscription from OP_RETURN (outputs)
+// Real binary format: 6a [length] 7a [proto/op] [payload]
+// Magic: 0x7A, Proto/Op: single byte (high 4 bits = protocol, low 4 bits = operation)
 function parseZincInscription(opReturnHex) {
   try {
     // OP_RETURN format: 6a (OP_RETURN) + length + data
@@ -106,39 +108,198 @@ function parseZincInscription(opReturnHex) {
     
     // Skip OP_RETURN byte and length byte
     const dataHex = opReturnHex.substring(4);
-    
-    // Convert hex to UTF-8
     const buffer = Buffer.from(dataHex, 'hex');
-    const text = buffer.toString('utf8');
     
-    // Check if it's a Zinc Protocol inscription
-    if (!text.startsWith('zinc:')) return null;
+    if (buffer.length < 2) return null;
     
-    // Parse inscription data
-    const parts = text.split(' ');
-    const inscriptionData = {};
+    // Check for magic byte (0x7A = 122)
+    const magic = buffer[0];
+    if (magic !== 0x7A) return null;
     
-    for (const part of parts) {
-      const [key, value] = part.split('=');
-      if (key && value) {
-        inscriptionData[key] = value;
-      }
+    // Read proto/op combined byte
+    const protoOp = buffer[1];
+    const protocolId = (protoOp >> 4) & 0x0F; // High 4 bits
+    const operation = protoOp & 0x0F; // Low 4 bits
+    
+    console.log(`  🔍 Zinc Protocol: magic=0x${magic.toString(16)}, proto=${protocolId}, op=${operation}`);
+    
+    // Protocol IDs: 0x0 = Zinc Core, 0x1 = ZRC-20, 0x2 = Marketplace
+    if (protocolId === 0x0) {
+      // Zinc Core (NFT collections)
+      return parseZincCoreInscription(buffer, operation);
+    } else if (protocolId === 0x1) {
+      // ZRC-20 tokens
+      return parseZrc20Inscription(buffer, operation);
+    } else if (protocolId === 0x2) {
+      // Marketplace
+      return parseMarketplaceInscription(buffer, operation);
     }
     
-    return {
-      protocol: 'zinc',
-      subProtocol: inscriptionData.p,
-      operation: inscriptionData.op,
-      data: inscriptionData
-    };
+    return null;
   } catch (error) {
+    console.log(`  ⚠️ Error parsing Zinc inscription: ${error.message}`);
     return null;
   }
 }
 
+// Parse ZRC-20 inscription (protocol ID 0x1)
+function parseZrc20Inscription(buffer, operation) {
+  let offset = 2; // Skip magic byte and proto/op byte
+  
+  // Operation types: 0x00 = deploy, 0x01 = mint, 0x02 = transfer
+  if (operation === 0x00) {
+    // Deploy: [ticker: null-terminated][max: u64][limit: u64][decimals: u8][mintPrice: u64][deployerLength: u8][deployer: bytes]
+    const tickerStart = offset;
+    while (offset < buffer.length && buffer[offset] !== 0x00) offset++;
+    const ticker = buffer.slice(tickerStart, offset).toString('utf8');
+    offset++; // Skip null terminator
+    
+    const maxSupply = buffer.readBigUInt64LE(offset);
+    offset += 8;
+    const mintLimit = buffer.readBigUInt64LE(offset);
+    offset += 8;
+    const decimals = buffer[offset++];
+    const mintPrice = buffer.readBigUInt64LE(offset);
+    offset += 8;
+    const deployerLength = buffer[offset++];
+    const deployer = deployerLength > 0 ? buffer.slice(offset, offset + deployerLength).toString('utf8') : null;
+    
+    console.log(`  ✅ ZRC-20 Deploy: ${ticker}, max=${maxSupply}, limit=${mintLimit}`);
+    
+    return {
+      protocol: 'zinc',
+      subProtocol: 'zrc-20',
+      operation: 'deploy',
+      data: {
+        p: 'zrc-20',
+        op: 'deploy',
+        tick: ticker,
+        max: maxSupply.toString(),
+        lim: mintLimit.toString(),
+        dec: decimals,
+        mintPrice: mintPrice.toString(),
+        deployer
+      }
+    };
+  } else if (operation === 0x01) {
+    // Mint: [deployTxid: 32 bytes][amount: u64]
+    const deployTxid = buffer.slice(offset, offset + 32).toString('hex');
+    offset += 32;
+    const amount = buffer.readBigUInt64LE(offset);
+    
+    console.log(`  ✅ ZRC-20 Mint: ${amount} tokens`);
+    
+    return {
+      protocol: 'zinc',
+      subProtocol: 'zrc-20',
+      operation: 'mint',
+      data: {
+        p: 'zrc-20',
+        op: 'mint',
+        deployTxid,
+        amt: amount.toString()
+      }
+    };
+  } else if (operation === 0x02) {
+    // Transfer: [deployTxid: 32 bytes][amount: u64][toLength: u8][to: bytes]
+    const deployTxid = buffer.slice(offset, offset + 32).toString('hex');
+    offset += 32;
+    const amount = buffer.readBigUInt64LE(offset);
+    offset += 8;
+    const toLength = buffer[offset++];
+    const to = buffer.slice(offset, offset + toLength).toString('utf8');
+    
+    console.log(`  ✅ ZRC-20 Transfer: ${amount} to ${to}`);
+    
+    return {
+      protocol: 'zinc',
+      subProtocol: 'zrc-20',
+      operation: 'transfer',
+      data: {
+        p: 'zrc-20',
+        op: 'transfer',
+        deployTxid,
+        amt: amount.toString(),
+        to
+      }
+    };
+  }
+  
+  return null;
+}
+
+// Parse Zinc Core inscription (protocol ID 0x0)
+function parseZincCoreInscription(buffer, operation) {
+  let offset = 2; // Skip magic byte and proto/op byte
+  
+  // Operation types: 0x00 = deploy collection, 0x01 = mint NFT
+  if (operation === 0x00) {
+    // Deploy Collection: [nameLength: u8][name: bytes][metadataLength: u16][metadata: bytes]
+    const nameLength = buffer[offset++];
+    const name = buffer.slice(offset, offset + nameLength).toString('utf8');
+    offset += nameLength;
+    
+    const metadataLength = buffer.readUInt16LE(offset);
+    offset += 2;
+    const metadata = metadataLength > 0 ? buffer.slice(offset, offset + metadataLength).toString('utf8') : null;
+    
+    console.log(`  ✅ Zinc Core Deploy: ${name}`);
+    
+    return {
+      protocol: 'zinc',
+      subProtocol: 'zinc-core',
+      operation: 'deploy',
+      data: {
+        p: 'zinc-core',
+        op: 'deploy',
+        collection: name,
+        metadata
+      }
+    };
+  } else if (operation === 0x01) {
+    // Mint NFT: [collectionTxid: 32 bytes][protocol: u8][dataLength: u8][data: bytes][mimeLength: u8][mime: bytes]
+    const collectionTxid = buffer.slice(offset, offset + 32).toString('hex');
+    offset += 32;
+    
+    const contentProtocol = buffer[offset++];
+    const dataLength = buffer[offset++];
+    const contentData = buffer.slice(offset, offset + dataLength).toString('utf8');
+    offset += dataLength;
+    
+    const mimeLength = buffer[offset++];
+    const mimeType = buffer.slice(offset, offset + mimeLength).toString('utf8');
+    
+    console.log(`  ✅ Zinc Core Mint NFT: ${mimeType}`);
+    
+    return {
+      protocol: 'zinc',
+      subProtocol: 'zinc-core',
+      operation: 'mint',
+      data: {
+        p: 'zinc-core',
+        op: 'mint',
+        collectionTxid,
+        contentProtocol,
+        contentData,
+        mimeType
+      }
+    };
+  }
+  
+  return null;
+}
+
+// Parse Marketplace inscription (protocol ID 0x02)
+function parseMarketplaceInscription(buffer, operation) {
+  // Marketplace operations: listing, bid, accept, cancel
+  // Implementation depends on marketplace spec
+  console.log(`  📋 Marketplace operation: ${operation}`);
+  return null; // Not implemented yet
+}
+
 // Parse Zerdinals inscription from ScriptSig (inputs)
-// Real format from transaction e40e0049cfa37f45c55f17596c59fce756a29d09bf899723b10e4090b958d2f5:
-// 036f7264 5309 696d6167652f706e67 524c [PNG_DATA]
+// Real format: 036f726451106170706c69636174696f6e2f6a736f6e00[length][data]
+// Breaking down: 036f7264 = prefix+"ord", 51=push, 10=16 bytes, 6170...=content type, 00=separator, 42=length, 7b...=data
 function parseZerdinalsInscription(scriptSigHex) {
   try {
     if (!scriptSigHex || scriptSigHex.length < 20) return null;
@@ -148,75 +309,82 @@ function parseZerdinalsInscription(scriptSigHex) {
     const ordIndex = scriptSigHex.indexOf(ordMarker);
     if (ordIndex === -1) return null;
     
+    console.log(`  📋 Parsing ord inscription, index: ${ordIndex}`);
+    
     // Extract everything after "ord"
-    const afterOrd = scriptSigHex.substring(ordIndex + ordMarker.length);
-    
-    // Next bytes indicate content type length
-    // Format: [length_byte][content_type][length_indicator][data]
-    // Example: 5309696d6167652f706e67 = 53(push) 09(9 bytes) "image/png"
-    
+    let afterOrd = scriptSigHex.substring(ordIndex + ordMarker.length);
     let offset = 0;
     
-    // Skip push opcode (53, 4c, 4d, 4e, etc.)
-    if (afterOrd.length > 2) {
-      offset = 2;
-    }
+    // Skip push opcode (51, 4c, 4d, etc.)
+    offset = 2;
     
-    // Read content type length
-    const contentTypeLength = parseInt(afterOrd.substring(offset, offset + 2), 16);
+    // Read content type length (1 byte)
+    const contentTypeLengthHex = afterOrd.substring(offset, offset + 2);
+    const contentTypeLength = parseInt(contentTypeLengthHex, 16);
     offset += 2;
+    
+    console.log(`  📋 Content type length: ${contentTypeLength}`);
     
     // Read content type
     const contentTypeHex = afterOrd.substring(offset, offset + (contentTypeLength * 2));
     const contentType = Buffer.from(contentTypeHex, 'hex').toString('utf8');
     offset += (contentTypeLength * 2);
     
-    // Skip data length indicator bytes (524c or similar)
-    offset += 4;
+    console.log(`  📋 Content type: ${contentType}`);
     
-    // Everything after is the actual inscription data
-    const dataHex = afterOrd.substring(offset);
+    // Skip separator byte (00)
+    offset += 2;
     
-    // Remove signature data (starts with 48 or similar - typically after the inscription)
-    // Find where inscription ends (look for signature start - usually 3044 or 3045)
-    const sigStart = dataHex.search(/3044|3045/);
-    const inscriptionDataHex = sigStart > 0 ? dataHex.substring(0, sigStart) : dataHex;
+    // Read data length (1 byte)
+    const dataLengthHex = afterOrd.substring(offset, offset + 2);
+    const dataLength = parseInt(dataLengthHex, 16);
+    offset += 2;
     
-    // Try to parse based on content type
-    if (contentType.includes('json') || contentType.includes('text')) {
+    console.log(`  📋 Data length: ${dataLength}`);
+    
+    // Read the actual data
+    const dataHex = afterOrd.substring(offset, offset + (dataLength * 2));
+    const dataText = Buffer.from(dataHex, 'hex').toString('utf8');
+    
+    console.log(`  📋 Data: ${dataText.substring(0, 100)}...`);
+    
+    // Parse JSON data if content type is JSON
+    if (contentType.includes('json')) {
       try {
-        const buffer = Buffer.from(inscriptionDataHex, 'hex');
-        const text = buffer.toString('utf8');
-        const data = JSON.parse(text);
+        const parsedData = JSON.parse(dataText);
+        console.log(`  ✅ Parsed JSON data:`, parsedData);
         
         return {
           protocol: 'zerdinals',
-          subProtocol: data.p || 'unknown',
-          operation: data.op || 'inscribe',
+          subProtocol: parsedData.p || 'unknown',
+          operation: parsedData.op || 'inscribe',
           contentType: contentType,
-          data: data
+          contentData: dataText,
+          data: parsedData
         };
-      } catch (jsonError) {
-        // Not valid JSON
+      } catch (e) {
+        console.log(`  ⚠️ Could not parse JSON: ${e.message}`);
         return {
           protocol: 'zerdinals',
           subProtocol: 'text',
           operation: 'inscribe',
           contentType: contentType,
-          data: { raw: inscriptionDataHex.substring(0, 100) } // Preview only
+          contentData: dataText,
+          data: { raw: dataText }
         };
       }
     } else {
       // Binary data (image, video, etc.)
+      console.log(`  📷 Binary content type: ${contentType}`);
       return {
         protocol: 'zerdinals',
         subProtocol: 'nft',
         operation: 'inscribe',
         contentType: contentType,
-        contentData: inscriptionDataHex, // Full content for storage
+        contentData: dataHex.substring(0, 400), // Preview
         data: {
           type: contentType,
-          size: inscriptionDataHex.length / 2 // bytes
+          size: dataLength
         }
       };
     }
@@ -279,6 +447,11 @@ async function processTransaction(txid, blockHeight, txData = null) {
     for (const input of tx.inputs || []) {
       if (!input.script_hex) continue;
       
+      // Debug: Check if script contains "ord" marker
+      if (input.script_hex.includes('6f7264')) {
+        console.log(`🔍 Found "ord" marker in tx ${txid}, script length: ${input.script_hex.length}`);
+      }
+      
       const inscription = parseZerdinalsInscription(input.script_hex);
       if (!inscription) continue;
       
@@ -315,39 +488,65 @@ async function processTransaction(txid, blockHeight, txData = null) {
   }
 }
 
-// Process ZRC-20 inscriptions
+// Process ZRC-20 inscriptions (both Zinc binary and Zerdinals JSON)
 async function processZRC20Inscription(inscription, txid, tx) {
-  const { op, tick, amt } = inscription.data;
+  const { op, tick, amt, deployTxid } = inscription.data;
   const address = tx.inputs[0]?.recipient;
   
-  if (!address || !tick) return;
+  // For Zinc protocol, we need to look up the ticker from deployTxid
+  let tokenTicker = tick;
+  if (!tokenTicker && deployTxid) {
+    // Query inscriptions table to get the token ticker
+    const { data: deployInscription } = await supabase
+      .from('inscriptions')
+      .select('data')
+      .eq('txid', deployTxid)
+      .single();
+    
+    if (deployInscription?.data?.tick) {
+      tokenTicker = deployInscription.data.tick;
+    }
+  }
+  
+  if (!address) return;
   
   if (op === 'deploy') {
-    console.log(`  💎 ZRC-20 Deploy: ${tick}`);
+    console.log(`  💎 ZRC-20 Deploy: ${tokenTicker || tick}`);
   } else if (op === 'mint') {
-    const amount = parseInt(amt || 0);
-    console.log(`  ✨ ZRC-20 Mint: ${amount} ${tick} to ${address}`);
+    if (!tokenTicker) {
+      console.log(`  ⚠️ Cannot process mint: ticker not found`);
+      return;
+    }
+    
+    const amount = BigInt(amt || 0);
+    console.log(`  ✨ ZRC-20 Mint: ${amount} ${tokenTicker} to ${address}`);
     
     // Update balance
     const { data: existing } = await supabase
       .from('zrc20_balances')
       .select('balance')
       .eq('address', address)
-      .eq('tick', tick)
+      .eq('tick', tokenTicker)
       .single();
     
-    const newBalance = (existing?.balance || 0) + amount;
+    const currentBalance = BigInt(existing?.balance || 0);
+    const newBalance = (currentBalance + amount).toString();
     
     await supabase.from('zrc20_balances').upsert({
       address: address,
-      tick: tick,
+      tick: tokenTicker,
       balance: newBalance
     });
   } else if (op === 'transfer') {
-    const amount = parseInt(amt || 0);
-    const recipient = tx.outputs[0]?.recipient;
+    if (!tokenTicker) {
+      console.log(`  ⚠️ Cannot process transfer: ticker not found`);
+      return;
+    }
     
-    console.log(`  💸 ZRC-20 Transfer: ${amount} ${tick} from ${address} to ${recipient}`);
+    const amount = BigInt(amt || 0);
+    const recipient = inscription.data.to || tx.outputs[0]?.recipient;
+    
+    console.log(`  💸 ZRC-20 Transfer: ${amount} ${tokenTicker} from ${address} to ${recipient}`);
     
     if (recipient) {
       // Deduct from sender
@@ -355,13 +554,16 @@ async function processZRC20Inscription(inscription, txid, tx) {
         .from('zrc20_balances')
         .select('balance')
         .eq('address', address)
-        .eq('tick', tick)
+        .eq('tick', tokenTicker)
         .single();
+      
+      const senderCurrent = BigInt(senderBalance?.balance || 0);
+      const senderNew = (senderCurrent - amount).toString();
       
       await supabase.from('zrc20_balances').upsert({
         address: address,
-        tick: tick,
-        balance: (senderBalance?.balance || 0) - amount
+        tick: tokenTicker,
+        balance: senderNew
       });
       
       // Add to recipient
@@ -369,13 +571,16 @@ async function processZRC20Inscription(inscription, txid, tx) {
         .from('zrc20_balances')
         .select('balance')
         .eq('address', recipient)
-        .eq('tick', tick)
+        .eq('tick', tokenTicker)
         .single();
+      
+      const recipientCurrent = BigInt(recipientBalance?.balance || 0);
+      const recipientNew = (recipientCurrent + amount).toString();
       
       await supabase.from('zrc20_balances').upsert({
         address: recipient,
-        tick: tick,
-        balance: (recipientBalance?.balance || 0) + amount
+        tick: tokenTicker,
+        balance: recipientNew
       });
     }
   }
@@ -396,49 +601,40 @@ async function scanBlocks() {
     
     let processedCount = 0;
     
-    // Scan blocks in batches
+    // Scan blocks sequentially with smart rate limiting
+    const totalBlocks = currentBlock - lastScanned;
+    let apiCallsUsed = 0;
+    
     for (let block = lastScanned + 1; block <= currentBlock; block++) {
       const txids = await fetchBlockTransactions(block);
+      apiCallsUsed++; // Block fetch
       
       if (txids.length > 0) {
-        console.log(`📦 Block ${block}: ${txids.length} transactions`);
+        console.log(`📦 Block ${block}: ${txids.length} transactions (${apiCallsUsed} API calls used)`);
         
-        // Batch fetch transaction details (up to 10 at a time)
-        const batchSize = 10;
-        for (let i = 0; i < txids.length; i += batchSize) {
-          const batch = txids.slice(i, i + batchSize);
-          
+        // Process each transaction individually (REQUIRED for inscription data)
+        for (const txid of txids) {
           try {
-            // Batch API call for multiple transactions
-            const batchUrl = `https://api.blockchair.com/zcash/dashboards/transactions/${batch.join(',')}?key=${BLOCKCHAIR_API_KEY}`;
-            const batchResponse = await fetch(batchUrl);
-            const batchData = await batchResponse.json();
-            
-            // Process each transaction with pre-fetched data
-            for (const txid of batch) {
-              const txData = batchData.data?.[txid];
-              if (txData) {
-                await processTransaction(txid, block, txData);
-              }
-            }
+            await processTransaction(txid, block);
+            apiCallsUsed++; // Transaction fetch
           } catch (error) {
-            console.error(`❌ Batch fetch failed for block ${block}:`, error.message);
-            // Fallback to individual fetches
-            for (const txid of batch) {
-              await processTransaction(txid, block);
-            }
+            console.error(`❌ Error processing tx ${txid}:`, error.message);
           }
+          
+          // Rate limiting: 200ms between transactions (max ~5 tx/sec)
+          await new Promise(resolve => setTimeout(resolve, 200));
         }
         
         processedCount++;
       }
       
-      // Update progress
+      // Update progress after each block
       await updateLastScannedBlock(block);
       
-      // Rate limiting - don't overwhelm Blockchair
+      // Longer pause every 10 blocks to avoid hitting rate limits
       if (processedCount % 10 === 0) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        console.log(`⏸️  Processed ${processedCount}/${totalBlocks} blocks, ${apiCallsUsed} API calls used. Cooling down...`);
+        await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second cooldown
       }
     }
     

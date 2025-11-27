@@ -32,6 +32,17 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
   const [showWalletMenu, setShowWalletMenu] = useState(false);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [transferToken, setTransferToken] = useState<ZRC20Token | null>(null);
+  const [transferRecipient, setTransferRecipient] = useState('');
+  const [transferAmount, setTransferAmount] = useState('');
+  const [transferLoading, setTransferLoading] = useState(false);
+  const [transferError, setTransferError] = useState<string | null>(null);
+  const [showNFTTransferModal, setShowNFTTransferModal] = useState(false);
+  const [transferNFT, setTransferNFT] = useState<NFTInscription | null>(null);
+  const [nftTransferRecipient, setNFTTransferRecipient] = useState('');
+  const [nftTransferLoading, setNFTTransferLoading] = useState(false);
+  const [nftTransferError, setNFTTransferError] = useState<string | null>(null);
   const [showConnectedSites, setShowConnectedSites] = useState(false);
   const [sendTo, setSendTo] = useState('');
   const [sendAmount, setSendAmount] = useState('');
@@ -301,6 +312,112 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
       setQrCodeDataUrl(qrDataUrl);
     } catch (error) {
       console.error('Failed to generate QR code:', error);
+    }
+  }
+
+  async function handleTransferToken() {
+    if (!transferToken) return;
+    
+    setTransferError(null);
+    setTransferLoading(true);
+    
+    try {
+      // Validate recipient address
+      if (!validateZcashAddress(transferRecipient)) {
+        throw new Error('Invalid recipient address');
+      }
+      
+      // Validate amount
+      const amount = parseInt(transferAmount);
+      if (isNaN(amount) || amount <= 0) {
+        throw new Error('Invalid amount');
+      }
+      
+      if (amount > transferToken.balance) {
+        throw new Error(`Insufficient balance. You have ${transferToken.balance} ${transferToken.tick}`);
+      }
+      
+      // Send transfer request to background
+      const response = await browser.runtime.sendMessage({
+        type: 'WALLET_ACTION',
+        action: 'TRANSFER_ZRC20',
+        data: {
+          deployTxid: transferToken.deployTxid,
+          amount: amount,
+          to: transferRecipient
+        }
+      });
+      
+      if (response.error) {
+        throw new Error(response.error);
+      }
+      
+      // Success!
+      setToast({ 
+        message: `Successfully sent ${amount} ${transferToken.tick}!`, 
+        type: 'success' 
+      });
+      
+      // Close modal and refresh
+      setShowTransferModal(false);
+      setTransferToken(null);
+      setTransferRecipient('');
+      setTransferAmount('');
+      
+      // Refresh balances
+      await handleSync();
+      
+    } catch (error: any) {
+      setTransferError(error.message || 'Transfer failed');
+    } finally {
+      setTransferLoading(false);
+    }
+  }
+
+  async function handleTransferNFT() {
+    if (!transferNFT) return;
+    
+    setNFTTransferError(null);
+    setNFTTransferLoading(true);
+    
+    try {
+      // Validate recipient address
+      if (!validateZcashAddress(nftTransferRecipient)) {
+        throw new Error('Invalid recipient address');
+      }
+      
+      // Send transfer request to background
+      const response = await browser.runtime.sendMessage({
+        type: 'WALLET_ACTION',
+        action: 'TRANSFER_NFT',
+        data: {
+          inscriptionTxid: transferNFT.txid,
+          to: nftTransferRecipient
+        }
+      });
+      
+      if (response.error) {
+        throw new Error(response.error);
+      }
+      
+      // Success!
+      setToast({ 
+        message: `Successfully sent NFT!`, 
+        type: 'success' 
+      });
+      
+      // Close modal and refresh
+      setShowNFTTransferModal(false);
+      setTransferNFT(null);
+      setNFTTransferRecipient('');
+      
+      // Refresh inscriptions
+      await loadInscriptions();
+      
+    } catch (error: any) {
+      setNFTTransferError(error.message || 'Transfer failed');
+    } finally {
+      setNFTTransferLoading(false);
     }
   }
 
@@ -656,7 +773,10 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
             <h3 className="font-bold mb-4 text-white">My Tokens</h3>
             <div className="space-y-2">
               {/* ZEC - Native Token */}
-              <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-3 hover:border-zinc-600 transition-colors">
+              <div 
+                onClick={() => setShowSend(true)}
+                className="bg-zinc-900 border border-zinc-700 rounded-lg p-3 hover:border-amber-500 hover:bg-zinc-800 transition-all cursor-pointer"
+              >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 flex items-center justify-center">
@@ -698,7 +818,14 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
               {zrc20Tokens.map((token) => (
                 <div
                   key={token.tick}
-                  className="bg-zinc-900 border border-zinc-700 rounded-lg p-3 hover:border-zinc-600 transition-colors"
+                  onClick={() => {
+                    setTransferToken(token);
+                    setShowTransferModal(true);
+                    setTransferRecipient('');
+                    setTransferAmount('');
+                    setTransferError(null);
+                  }}
+                  className="bg-zinc-900 border border-zinc-700 rounded-lg p-3 hover:border-amber-500 hover:bg-zinc-800 transition-all cursor-pointer"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -733,7 +860,16 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
         )}
 
         {view === 'nfts' && (
-          <NFTGallery nfts={nfts} onRefresh={loadInscriptions} />
+          <NFTGallery 
+            nfts={nfts} 
+            onRefresh={loadInscriptions}
+            onSendNFT={(nft) => {
+              setTransferNFT(nft);
+              setShowNFTTransferModal(true);
+              setNFTTransferRecipient('');
+              setNFTTransferError(null);
+            }}
+          />
         )}
 
         {view === 'activity' && (
@@ -1108,6 +1244,146 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
               >
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showTransferModal && transferToken && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+          <div className="bg-zinc-darker border border-zinc-700 rounded-xl p-6 w-full max-w-md mx-4">
+            <h2 className="text-lg font-semibold text-white mb-4">Send {transferToken.tick}</h2>
+            <p className="text-xs text-zinc-400 mb-4">
+              Balance: {transferToken.balance.toLocaleString()} {transferToken.tick}
+            </p>
+            
+            <div className="space-y-4">
+              {transferError && (
+                <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-3">
+                  <p className="text-sm text-red-400">{transferError}</p>
+                </div>
+              )}
+              
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  Recipient Address
+                </label>
+                <input
+                  type="text"
+                  value={transferRecipient}
+                  onChange={(e) => setTransferRecipient(e.target.value)}
+                  placeholder="t1..."
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-500 focus:border-amber-500 focus:outline-none font-mono text-sm"
+                  disabled={transferLoading}
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  Amount
+                </label>
+                <input
+                  type="number"
+                  value={transferAmount}
+                  onChange={(e) => setTransferAmount(e.target.value)}
+                  placeholder="0"
+                  min="1"
+                  max={transferToken.balance}
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-500 focus:border-amber-500 focus:outline-none"
+                  disabled={transferLoading}
+                />
+                <p className="text-xs text-zinc-500 mt-1">
+                  Max: {transferToken.balance.toLocaleString()} {transferToken.tick}
+                </p>
+              </div>
+              
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowTransferModal(false);
+                    setTransferToken(null);
+                    setTransferRecipient('');
+                    setTransferAmount('');
+                    setTransferError(null);
+                  }}
+                  className="flex-1 btn btn-secondary"
+                  disabled={transferLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleTransferToken}
+                  className="flex-1 btn btn-primary"
+                  disabled={transferLoading || !transferRecipient || !transferAmount}
+                >
+                  {transferLoading ? 'Sending...' : `Send ${transferToken.tick}`}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showNFTTransferModal && transferNFT && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+          <div className="bg-zinc-darker border border-zinc-700 rounded-xl p-6 w-full max-w-md mx-4">
+            <h2 className="text-lg font-semibold text-white mb-4">Send NFT</h2>
+            <p className="text-xs text-zinc-400 mb-4">
+              {transferNFT.collection || transferNFT.contentType || 'Inscription'} #{transferNFT.id}
+            </p>
+            
+            <div className="space-y-4">
+              {nftTransferError && (
+                <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-3">
+                  <p className="text-sm text-red-400">{nftTransferError}</p>
+                </div>
+              )}
+              
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">
+                  Recipient Address
+                </label>
+                <input
+                  type="text"
+                  value={nftTransferRecipient}
+                  onChange={(e) => setNFTTransferRecipient(e.target.value)}
+                  placeholder="t1..."
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-white placeholder-zinc-500 focus:border-amber-500 focus:outline-none font-mono text-sm"
+                  disabled={nftTransferLoading}
+                />
+              </div>
+              
+              <div className="bg-amber-500/10 border border-amber-500/50 rounded-lg p-3">
+                <p className="text-xs text-amber-400">
+                  ⚠️ This will transfer ownership of the NFT to the recipient address permanently.
+                </p>
+              </div>
+              
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowNFTTransferModal(false);
+                    setTransferNFT(null);
+                    setNFTTransferRecipient('');
+                    setNFTTransferError(null);
+                  }}
+                  className="flex-1 btn btn-secondary"
+                  disabled={nftTransferLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleTransferNFT}
+                  className="flex-1 btn btn-primary"
+                  disabled={nftTransferLoading || !nftTransferRecipient}
+                >
+                  {nftTransferLoading ? 'Sending...' : 'Send NFT'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

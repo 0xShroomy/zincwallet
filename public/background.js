@@ -1321,6 +1321,63 @@ async function handleTransferZrc20(data) {
 }
 
 /**
+ * Transfer NFT (Zerdinals Protocol)
+ */
+async function handleTransferNFT(data) {
+  try {
+    const { inscriptionTxid, to } = data;
+    
+    console.log('[Background] Transferring NFT:', { inscriptionTxid, to });
+    
+    if (walletState.isLocked || !walletState.address) {
+      throw new Error('Wallet is locked');
+    }
+    
+    const utxos = await getUtxosForAddress(walletState.address);
+    if (!utxos || utxos.length === 0) {
+      throw new Error('No UTXOs available');
+    }
+    
+    const privateKey = await getPrivateKeyForAddress(walletState.address);
+    
+    // Build transfer inscription
+    const inscription = self.InscriptionBuilder.buildZincInscription('transferNFT', {
+      inscriptionTxid,
+      to
+    });
+    
+    // Add transfer amount to inscription for UTXO selection
+    inscription.transferAmount = 546; // dust amount to recipient
+    
+    const tx = await self.TransactionBuilder.buildInscriptionTransaction({
+      utxos,
+      fromAddress: walletState.address,
+      toAddress: to,
+      inscription,
+      privateKey,
+      network: walletState.network
+    });
+    
+    const result = await self.TransactionBuilder.broadcastTransaction(tx.txHex, walletState.network);
+    
+    console.log('[Background] NFT transferred:', result.txid);
+    
+    return {
+      success: true,
+      txid: result.txid,
+      protocol: 'zerdinals',
+      type: 'transferNFT'
+    };
+  } catch (error) {
+    console.error('[Background] Transfer NFT failed:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+/**
  * Deploy NFT Collection (Zinc Protocol)
  */
 async function handleDeployCollection(data) {
@@ -3043,6 +3100,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           
           case 'TRANSFER_ZRC20':
             result = await handleTransferZrc20(message.data);
+            break;
+          
+          case 'TRANSFER_NFT':
+            result = await handleTransferNFT(message.data);
             break;
           
           case 'DEPLOY_COLLECTION':

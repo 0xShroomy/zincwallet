@@ -20,6 +20,7 @@ export interface NFTInscription {
   owner: string;
   contentType?: string;
   contentSize?: number;
+  protocol?: 'zinc' | 'zerdinals'; // Protocol type for explorer link detection
 }
 
 export interface InscriptionData {

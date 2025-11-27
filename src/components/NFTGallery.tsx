@@ -5,9 +5,10 @@ import ContentRenderer from './ContentRenderer';
 interface Props {
   nfts: NFTInscription[];
   onRefresh?: () => void;
+  onSendNFT?: (nft: NFTInscription) => void;
 }
 
-export default function NFTGallery({ nfts, onRefresh }: Props) {
+export default function NFTGallery({ nfts, onRefresh, onSendNFT }: Props) {
   const [selectedNFT, setSelectedNFT] = useState<NFTInscription | null>(null);
 
   if (nfts.length === 0) {
@@ -137,12 +138,32 @@ export default function NFTGallery({ nfts, onRefresh }: Props) {
                 </div>
               )}
 
-              <button
-                onClick={() => window.open(`https://explorer.zcha.in/transactions/${selectedNFT.txid}`, '_blank')}
-                className="w-full btn btn-secondary"
-              >
-                View on Explorer
-              </button>
+              <div className="flex gap-2">
+                {onSendNFT && (
+                  <button
+                    onClick={() => {
+                      onSendNFT(selectedNFT);
+                      setSelectedNFT(null);
+                    }}
+                    className="flex-1 btn btn-primary"
+                  >
+                    Send NFT
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    // Detect protocol based on inscription data
+                    const isZincProtocol = selectedNFT.protocol === 'zinc';
+                    const explorerUrl = isZincProtocol 
+                      ? `https://blockchair.com/zcash/transaction/${selectedNFT.txid}`
+                      : `https://mainnet.zcashexplorer.app/transactions/${selectedNFT.txid}`;
+                    window.open(explorerUrl, '_blank');
+                  }}
+                  className="flex-1 btn btn-secondary"
+                >
+                  View on Explorer
+                </button>
+              </div>
             </div>
           </div>
         </div>

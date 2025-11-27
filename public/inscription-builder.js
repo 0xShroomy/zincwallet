@@ -3,18 +3,26 @@
  * Supports both Zinc (OP_RETURN) and Zerdinals (ScriptSig) protocols
  */
 
+// Zinc Protocol constants
+const ZINC_MAGIC = 0x7A; // Magic byte identifier
+
 // Protocol identifiers
 const ZINC_PROTOCOL_ID = {
-  CORE: 0x00,      // NFTs and collections
-  ZRC20: 0x01,     // Fungible tokens
-  MARKETPLACE: 0x02 // Trading
+  CORE: 0x0,       // NFTs and collections
+  ZRC20: 0x1,      // Fungible tokens
+  MARKETPLACE: 0x2 // Trading
 };
 
 const ZINC_OPERATIONS = {
-  DEPLOY: 0x00,
-  MINT: 0x01,
-  TRANSFER: 0x02
+  DEPLOY: 0x0,
+  MINT: 0x1,
+  TRANSFER: 0x2
 };
+
+// Helper to combine protocol and operation into single byte
+function makeProtoOpByte(protocolId, operation) {
+  return (protocolId << 4) | (operation & 0x0F);
+}
 
 // Zinc treasury configuration
 const ZINC_TREASURY_ADDRESS = 't1ZcnUqva1dCydNPFd3EH8b7Scmz1V5oh1N';
@@ -98,16 +106,16 @@ function buildZrc20Deploy(data) {
   // Calculate buffer size
   const tickerBytes = new TextEncoder().encode(tick);
   const bufferSize = 1 + 1 + tickerBytes.length + 1 + 8 + 8 + 1 + 8 + 1 + deployerBytes.length; 
-  // protocol + op + ticker + null + max + limit + decimals + mintPrice + deployerLength + deployer
+  // magic + proto/op + ticker + null + max + limit + decimals + mintPrice + deployerLength + deployer
   
   const buffer = new Uint8Array(bufferSize);
   let offset = 0;
   
-  // Protocol ID (ZRC-20)
-  buffer[offset++] = ZINC_PROTOCOL_ID.ZRC20;
+  // Magic byte
+  buffer[offset++] = ZINC_MAGIC;
   
-  // Operation (Deploy)
-  buffer[offset++] = ZINC_OPERATIONS.DEPLOY;
+  // Proto/Op combined byte (ZRC-20 + Deploy = 0x10)
+  buffer[offset++] = makeProtoOpByte(ZINC_PROTOCOL_ID.ZRC20, ZINC_OPERATIONS.DEPLOY);
   
   // Ticker (null-terminated string)
   buffer.set(tickerBytes, offset);
@@ -166,14 +174,14 @@ function buildZrc20Mint(data) {
   const amountBig = BigInt(amount);
   if (amountBig <= 0) throw new Error('Amount must be positive');
   
-  const buffer = new Uint8Array(1 + 1 + 32 + 8); // protocol + op + txid + amount
+  const buffer = new Uint8Array(1 + 1 + 32 + 8); // magic + proto/op + txid + amount
   let offset = 0;
   
-  // Protocol ID
-  buffer[offset++] = ZINC_PROTOCOL_ID.ZRC20;
+  // Magic byte
+  buffer[offset++] = ZINC_MAGIC;
   
-  // Operation (Mint)
-  buffer[offset++] = ZINC_OPERATIONS.MINT;
+  // Proto/Op combined byte (ZRC-20 + Mint = 0x11)
+  buffer[offset++] = makeProtoOpByte(ZINC_PROTOCOL_ID.ZRC20, ZINC_OPERATIONS.MINT);
   
   // Deploy txid (32 bytes, reversed for internal byte order)
   const txidBytes = hexToBytes(deployTxid).reverse();
@@ -209,11 +217,14 @@ function buildZrc20Transfer(data) {
   
   // Note: 'to' address is implicit in the transaction output, not in OP_RETURN
   
-  const buffer = new Uint8Array(1 + 1 + 32 + 8);
+  const buffer = new Uint8Array(1 + 1 + 32 + 8); // magic + proto/op + txid + amount
   let offset = 0;
   
-  buffer[offset++] = ZINC_PROTOCOL_ID.ZRC20;
-  buffer[offset++] = ZINC_OPERATIONS.TRANSFER;
+  // Magic byte
+  buffer[offset++] = ZINC_MAGIC;
+  
+  // Proto/Op combined byte (ZRC-20 + Transfer = 0x12)
+  buffer[offset++] = makeProtoOpByte(ZINC_PROTOCOL_ID.ZRC20, ZINC_OPERATIONS.TRANSFER);
   
   const txidBytes = hexToBytes(deployTxid).reverse();
   buffer.set(txidBytes, offset);
@@ -246,17 +257,19 @@ function buildZincCoreDeploy(data) {
   const nameBytes = new TextEncoder().encode(name);
   const metadataBytes = metadata ? new TextEncoder().encode(JSON.stringify(metadata)) : new Uint8Array(0);
   
-  const buffer = new Uint8Array(1 + 1 + nameBytes.length + 1 + metadataBytes.length);
+  const buffer = new Uint8Array(1 + 1 + 1 + nameBytes.length + 2 + metadataBytes.length); // magic + proto/op + nameLength + name + metadataLength + metadata
   let offset = 0;
   
-  buffer[offset++] = ZINC_PROTOCOL_ID.CORE;
-  buffer[offset++] = ZINC_OPERATIONS.DEPLOY;
+  buffer[offset++] = ZINC_MAGIC;
+  buffer[offset++] = makeProtoOpByte(ZINC_PROTOCOL_ID.CORE, ZINC_OPERATIONS.DEPLOY);
   
+  buffer[offset++] = nameBytes.length;
   buffer.set(nameBytes, offset);
   offset += nameBytes.length;
   buffer[offset++] = 0x00; // null terminator
   
   if (metadataBytes.length > 0) {
+    buffer[offset++] = metadataBytes.length;
     buffer.set(metadataBytes, offset);
   }
   
@@ -296,11 +309,11 @@ function buildZincCoreMint(data) {
   const contentBytes = new TextEncoder().encode(contentData);
   const mimeBytes = mimeType ? new TextEncoder().encode(mimeType) : new Uint8Array(0);
   
-  const buffer = new Uint8Array(1 + 1 + 32 + 1 + contentBytes.length + 1 + mimeBytes.length);
+  const buffer = new Uint8Array(1 + 1 + 32 + 1 + contentBytes.length + 1 + mimeBytes.length); // magic + proto/op + txid + protocol + content + mimeLength + mime
   let offset = 0;
   
-  buffer[offset++] = ZINC_PROTOCOL_ID.CORE;
-  buffer[offset++] = ZINC_OPERATIONS.MINT;
+  buffer[offset++] = ZINC_MAGIC;
+  buffer[offset++] = makeProtoOpByte(ZINC_PROTOCOL_ID.CORE, ZINC_OPERATIONS.MINT);
   
   const txidBytes = hexToBytes(collectionTxid).reverse();
   buffer.set(txidBytes, offset);

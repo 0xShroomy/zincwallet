@@ -8,6 +8,7 @@ interface Transaction {
   timestamp: number;
   confirmations: number;
   address?: string;
+  protocol?: 'zinc' | 'zerdinals'; // Added for explorer detection
 }
 
 interface Props {
@@ -147,9 +148,18 @@ export default function TransactionHistory({ walletAddress, isRefreshing, networ
     return `${txid.slice(0, 8)}...${txid.slice(-8)}`;
   }
 
-  function openExplorer(txid: string) {
-    const networkPrefix = network?.toLowerCase() === 'testnet' ? 'testnet' : 'mainnet';
-    const explorerUrl = `https://${networkPrefix}.zcashexplorer.app/transactions/${txid}`;
+  function openExplorer(txid: string, protocol?: 'zinc' | 'zerdinals') {
+    // Zinc Protocol → Blockchair (supports OP_RETURN inscriptions)
+    // Zerdinals/Regular → zcashexplorer.app (better for regular transactions and Zerdinals)
+    let explorerUrl: string;
+    
+    if (protocol === 'zinc') {
+      explorerUrl = `https://blockchair.com/zcash/transaction/${txid}`;
+    } else {
+      // Default to zcashexplorer for Zerdinals and regular transactions
+      explorerUrl = `https://mainnet.zcashexplorer.app/transactions/${txid}`;
+    }
+    
     window.open(explorerUrl, '_blank');
   }
 
@@ -204,8 +214,8 @@ export default function TransactionHistory({ walletAddress, isRefreshing, networ
   }
 
   function openAddressExplorer() {
-    const networkPrefix = network?.toLowerCase() === 'testnet' ? 'testnet' : 'mainnet';
-    const explorerUrl = `https://${networkPrefix}.zcashexplorer.app/address/${walletAddress}`;
+    // Use Blockchair for address lookups
+    const explorerUrl = `https://blockchair.com/zcash/address/${walletAddress}`;
     window.open(explorerUrl, '_blank');
   }
 
@@ -228,7 +238,7 @@ export default function TransactionHistory({ walletAddress, isRefreshing, networ
         {transactions.map((tx) => (
           <div
             key={tx.txid}
-            onClick={() => openExplorer(tx.txid)}
+            onClick={() => openExplorer(tx.txid, tx.protocol)}
             className="bg-zinc-900 border border-zinc-700 rounded-lg p-3 hover:border-zinc-600 transition-colors cursor-pointer"
           >
             <div className="flex items-start justify-between">
