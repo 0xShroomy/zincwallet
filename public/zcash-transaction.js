@@ -204,20 +204,18 @@ self.ZcashTransaction = (function() {
     }
     
     return {
-      version: 4 | (1 << 31), // Zcash v4 with Overwinter bit set (0x80000004 = 2147483652)
+      version: 5 | (1 << 31), // Zcash v5 with Overwinter bit
+      consensusBranchId: 0xC2D6D0B4, // NU5 consensus branch
       inputs: utxos.map(utxo => ({
         txid: utxo.txid,
         vout: utxo.vout,
         script: hexToBytes(utxo.scriptPubKey || ''),
         sequence: 0xffffffff,
-        value: utxo.value || utxo.satoshis || 0 // REQUIRED for ZIP-243 signing!
+        value: utxo.value || utxo.satoshis || 0 // REQUIRED for ZIP-244 signing!
       })),
       outputs: txOutputs,
       lockTime: 0,
-      valueBalance: 0n, // For Sapling (we're doing transparent only)
-      nShieldedSpend: 0,
-      nShieldedOutput: 0,
-      nJoinSplit: 0
+      expiryHeight: 3200000 // Block 3.2M (~50k blocks in future)
     };
   }
   
@@ -228,25 +226,28 @@ self.ZcashTransaction = (function() {
   async function serializeForSigning(tx, inputIndex, prevScript) {
     const buffer = [];
     
-    // 1. nVersion + fOverwintered
-    buffer.push(...encodeUint32LE(tx.version)); // Already has Overwinter bit
+    // 1. nVersion + fOverwintered (v5)
+    buffer.push(...encodeUint32LE(tx.version)); // v5 with Overwinter bit
     
-    // 2. nVersionGroupId
-    buffer.push(...encodeUint32LE(0x892f2085));
+    // 2. nVersionGroupId (v5 = 0x26A7270A)
+    buffer.push(...encodeUint32LE(0x26A7270A));
     
-    // 3. hashPrevouts (double SHA256 of all input outpoints)
+    // 3. Consensus Branch ID (NU5)
+    buffer.push(...encodeUint32LE(tx.consensusBranchId));
+    
+    // 4. hashPrevouts (double SHA256 of all input outpoints)
     const prevoutsData = [];
     for (const input of tx.inputs) {
       const txidBytes = hexToBytes(input.txid);
       prevoutsData.push(...Array.from(txidBytes).reverse());
       prevoutsData.push(...encodeUint32LE(input.vout));
     }
-    console.log('[ZIP-243] prevoutsData length:', prevoutsData.length);
+    console.log('[ZIP-244-v5] prevoutsData length:', prevoutsData.length);
     const hashPrevouts = await hash256(new Uint8Array(prevoutsData));
-    console.log('[ZIP-243] hashPrevouts:', bytesToHex(hashPrevouts));
+    console.log('[ZIP-244-v5] hashPrevouts:', bytesToHex(hashPrevouts));
     buffer.push(...hashPrevouts);
     
-    // 4. hashSequence (double SHA256 of all input sequences)
+    // 5. hashSequence (double SHA256 of all input sequences)
     const sequenceData = [];
     for (const input of tx.inputs) {
       sequenceData.push(...encodeUint32LE(input.sequence));
@@ -254,7 +255,7 @@ self.ZcashTransaction = (function() {
     const hashSequence = await hash256(new Uint8Array(sequenceData));
     buffer.push(...hashSequence);
     
-    // 5. hashOutputs (double SHA256 of all outputs)
+    // 6. hashOutputs (double SHA256 of all outputs)
     const outputsData = [];
     for (const output of tx.outputs) {
       outputsData.push(...encodeUint64LE(output.value));
@@ -264,46 +265,44 @@ self.ZcashTransaction = (function() {
     const hashOutputs = await hash256(new Uint8Array(outputsData));
     buffer.push(...hashOutputs);
     
-    // 6. hashJoinSplits (32 zero bytes for transparent-only)
+    // 7. hashJoinSplits (32 zero bytes for transparent-only)
     buffer.push(...new Array(32).fill(0));
     
-    // 7. hashShieldedSpends (32 zero bytes for transparent-only)
+    // 8. hashShieldedSpends (32 zero bytes for transparent-only)
     buffer.push(...new Array(32).fill(0));
     
-    // 8. hashShieldedOutputs (32 zero bytes for transparent-only)
+    // 9. hashShieldedOutputs (32 zero bytes for transparent-only)
     buffer.push(...new Array(32).fill(0));
     
-    // 9. nLockTime
+    // 10. nLockTime
     buffer.push(...encodeUint32LE(tx.lockTime));
     
-    // 10. nExpiryHeight - must match serialization!
-    const currentBlock = 2114255; // Approximate current Zcash block height
-    const expiryHeight = currentBlock + 20;
-    buffer.push(...encodeUint32LE(expiryHeight));
+    // 11. nExpiryHeight - use from tx object
+    buffer.push(...encodeUint32LE(tx.expiryHeight));
     
-    // 11. valueBalance (8 bytes, zero for transparent)
+    // 12. valueBalance (8 bytes, zero for transparent)
     buffer.push(...encodeUint64LE(0n));
     
-    // 12. nHashType (SIGHASH_ALL)
+    // 13. nHashType (SIGHASH_ALL)
     buffer.push(...encodeUint32LE(0x01));
     
-    // 13. Input being signed: outpoint
+    // 14. Input being signed: outpoint
     const input = tx.inputs[inputIndex];
     const txidBytes = hexToBytes(input.txid);
     buffer.push(...Array.from(txidBytes).reverse());
     buffer.push(...encodeUint32LE(input.vout));
     
-    // 14. scriptCode of input (the prevScript)
+    // 15. scriptCode of input (the prevScript)
     buffer.push(...encodeVarInt(prevScript.length));
     buffer.push(...prevScript);
     
-    // 15. value of input (8 bytes)
+    // 16. value of input (8 bytes)
     // We need to get this from the UTXO!
     const utxoValue = tx.inputs[inputIndex].value || 0n;
-    console.log('[ZIP-243] Input value for signing:', utxoValue, 'type:', typeof utxoValue);
+    console.log('[ZIP-244-v5] Input value for signing:', utxoValue, 'type:', typeof utxoValue);
     buffer.push(...encodeUint64LE(BigInt(utxoValue)));
     
-    // 16. nSequence of input
+    // 17. nSequence of input
     buffer.push(...encodeUint32LE(input.sequence));
     
     return new Uint8Array(buffer);
@@ -374,11 +373,20 @@ self.ZcashTransaction = (function() {
   function serializeTransaction(tx) {
     const buffer = [];
     
-    // Version
+    // Version (v5 with Overwinter bit)
     buffer.push(...encodeUint32LE(tx.version));
     
-    // Group ID (Zcash v4)
-    buffer.push(...encodeUint32LE(0x892f2085));
+    // Group ID (v5 = 0x26A7270A)
+    buffer.push(...encodeUint32LE(0x26A7270A));
+    
+    // Consensus Branch ID (NU5)
+    buffer.push(...encodeUint32LE(tx.consensusBranchId));
+    
+    // Lock time (moved before inputs in v5!)
+    buffer.push(...encodeUint32LE(tx.lockTime));
+    
+    // Expiry height (moved before inputs in v5!)
+    buffer.push(...encodeUint32LE(tx.expiryHeight));
     
     // Input count
     buffer.push(...encodeVarInt(tx.inputs.length));
@@ -403,17 +411,10 @@ self.ZcashTransaction = (function() {
       buffer.push(...output.script);
     }
     
-    // Lock time
-    buffer.push(...encodeUint32LE(tx.lockTime));
-    
-    // Expiry height - must be a future block height (not 0!)
-    // Set to current block + 20 blocks (~50 minutes)
-    const currentBlock = 2114255; // Approximate current Zcash block height
-    const expiryHeight = currentBlock + 20;
-    buffer.push(...encodeUint32LE(expiryHeight));
-    
-    // For transparent-only transactions, we're done!
-    // (Sapling fields like valueBalance, nShieldedSpend, etc. are NOT included)
+    // v5: Sapling/Orchard counts (0 for transparent-only)
+    buffer.push(...encodeVarInt(0)); // nSpendsSapling
+    buffer.push(...encodeVarInt(0)); // nOutputsSapling
+    buffer.push(...encodeVarInt(0)); // nActionsOrchard
     
     return bytesToHex(new Uint8Array(buffer));
   }
