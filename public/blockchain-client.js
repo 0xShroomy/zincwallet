@@ -234,7 +234,7 @@ self.LightwalletdClient = (function() {
           }
         }
         
-        console.error('[Lightwalletd] Proxy broadcast failed (${response.status})');
+        console.error(`[Lightwalletd] Proxy broadcast failed (${response.status})`);
       } catch (error) {
         console.error('[Lightwalletd] Proxy error:', error.message);
       }

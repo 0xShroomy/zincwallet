@@ -35,8 +35,10 @@ export default async function handler(req, res) {
     });
   }
   
-  // Use Tatum RPC endpoint for Zcash
-  const tatumUrl = 'https://api.tatum.io/v3/blockchain/node/zcash-mainnet';
+  // Use Tatum Gateway RPC endpoint for Zcash
+  const tatumUrl = network === 'testnet'
+    ? 'https://zcash-testnet.gateway.tatum.io'
+    : 'https://zcash-mainnet.gateway.tatum.io';
   
   const explorers = [
     {
