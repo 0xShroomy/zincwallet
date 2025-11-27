@@ -137,21 +137,26 @@ const FEE_RATES = {
 };
 
 /**
- * Calculate transaction fee based on inputs/outputs
+ * Calculate transaction fee based on ZIP-317 (NU6+)
+ * Fee = marginal_fee × max(grace_actions, logical_actions)
  */
 function calculateTransactionFee(inputCount, outputCount, feeRate) {
-  // Zcash transaction size estimation:
-  // Base: 10 bytes (version, locktime, etc.)
-  // Per input: ~150 bytes (prevout, scriptsig, sequence)
-  // Per output: ~34 bytes (value, scriptpubkey)
-  const estimatedSize = 10 + (inputCount * 150) + (outputCount * 34);
-  const feeInZatoshis = Math.ceil(estimatedSize * feeRate);
+  // ZIP-317: Proportional Transfer Fee Mechanism (NU6+)
+  // marginal_fee = 5000 zatoshis per logical action
+  // grace_actions = 2 (no fee for first 2 actions)
+  // logical_actions = max(inputs, outputs)
   
-  console.log('[Background] Fee calculation:', {
+  const marginalFee = 5000; // zatoshis per action
+  const graceActions = 2;
+  const logicalActions = Math.max(inputCount, outputCount);
+  const feeInZatoshis = marginalFee * Math.max(graceActions, logicalActions);
+  
+  console.log('[Background] Fee calculation (ZIP-317):', {
     inputs: inputCount,
     outputs: outputCount,
-    estimatedSize,
-    feeRate,
+    logicalActions,
+    marginalFee,
+    graceActions,
     feeInZatoshis,
     feeInZEC: (feeInZatoshis / 100000000).toFixed(8)
   });
