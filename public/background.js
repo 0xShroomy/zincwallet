@@ -2166,14 +2166,13 @@ async function handleEstimateFee(data) {
     // Calculate how many inputs needed for this amount
     const amountZatoshis = Math.round(amountZec * 100000000);
     let inputCount = 0;
-    let totalInput = 0;
+    let totalInput = utxos.reduce((sum, utxo) => sum + BigInt(utxo.value || utxo.satoshis || 0), 0n);
     
-    for (const utxo of utxos.sort((a, b) => b.satoshis - a.satoshis)) {
+    for (const utxo of utxos.sort((a, b) => (b.satoshis || b.value) - (a.satoshis || a.value))) {
       inputCount++;
-      totalInput += utxo.satoshis;
       // Estimate fee for this many inputs
       const estimatedFee = calculateTransactionFee(inputCount, 2, FEE_RATES.standard);
-      if (totalInput >= amountZatoshis + estimatedFee) break;
+      if (totalInput >= amountZatoshis + BigInt(estimatedFee)) break;
     }
     
     // Output count: 1 for recipient + 1 for change
@@ -2262,9 +2261,9 @@ async function handleSendZec(data) {
     let totalInput = 0;
     const requiredAmount = amountZatoshis + 10000; // +10k zatoshis for fee estimate
     
-    for (const utxo of utxos.sort((a, b) => b.satoshis - a.satoshis)) {
+    for (const utxo of utxos.sort((a, b) => (b.value || b.satoshis || 0) - (a.value || a.satoshis || 0))) {
       selectedUtxos.push(utxo);
-      totalInput += utxo.satoshis;
+      totalInput += (utxo.value || utxo.satoshis || 0);
       if (totalInput >= requiredAmount) break;
     }
     
