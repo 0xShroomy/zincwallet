@@ -241,7 +241,9 @@ self.ZcashTransaction = (function() {
       prevoutsData.push(...Array.from(txidBytes).reverse());
       prevoutsData.push(...encodeUint32LE(input.vout));
     }
+    console.log('[ZIP-243] prevoutsData length:', prevoutsData.length);
     const hashPrevouts = await hash256(new Uint8Array(prevoutsData));
+    console.log('[ZIP-243] hashPrevouts:', bytesToHex(hashPrevouts));
     buffer.push(...hashPrevouts);
     
     // 4. hashSequence (double SHA256 of all input sequences)
@@ -296,6 +298,7 @@ self.ZcashTransaction = (function() {
     // 15. value of input (8 bytes)
     // We need to get this from the UTXO!
     const utxoValue = tx.inputs[inputIndex].value || 0n;
+    console.log('[ZIP-243] Input value for signing:', utxoValue, 'type:', typeof utxoValue);
     buffer.push(...encodeUint64LE(BigInt(utxoValue)));
     
     // 16. nSequence of input
