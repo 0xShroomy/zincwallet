@@ -234,50 +234,14 @@ self.LightwalletdClient = (function() {
           }
         }
         
-        console.warn(`[Lightwalletd] Proxy broadcast failed (${response.status}), falling back to Blockchair`);
+        console.error('[Lightwalletd] Proxy broadcast failed (${response.status})');
       } catch (error) {
-        console.warn('[Lightwalletd] Proxy error, falling back to Blockchair:', error.message);
+        console.error('[Lightwalletd] Proxy error:', error.message);
       }
     }
     
-    // Fallback: Direct Blockchair push API
-    try {
-      const blockchairUrl = `https://api.blockchair.com/zcash/push/transaction?key=A___EsSizQQ9Y2ukrBGc1X6tGbsogmFz`;
-      console.log('[Lightwalletd] Broadcasting via Blockchair:', blockchairUrl);
-      
-      const response = await fetch(blockchairUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          data: txHex
-        })
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('[Lightwalletd] Blockchair returned', response.status, errorText);
-        throw new Error(`Blockchair broadcast failed: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      if (data.data && data.data.transaction_hash) {
-        const txid = data.data.transaction_hash;
-        console.log('[Lightwalletd] ✓ Transaction broadcast successful via Blockchair!');
-        console.log('[Lightwalletd] ✓ TXID:', txid);
-        return txid;
-      } else if (data.context && data.context.error) {
-        throw new Error(`Blockchair error: ${data.context.error}`);
-      } else {
-        throw new Error('Broadcast failed: Unknown error');
-      }
-      
-    } catch (error) {
-      console.error('[Lightwalletd] Broadcast failed:', error.message);
-      throw error;
-    }
+    // No fallback - if proxy fails, transaction broadcast fails
+    throw new Error('Transaction broadcast failed. Please ensure the Vercel proxy is deployed with Tatum API configured.');
   }
   
   /**

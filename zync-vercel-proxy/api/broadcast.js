@@ -23,27 +23,29 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'txHex parameter required' });
   }
 
-  // Blockchair API key from environment
-  const BLOCKCHAIR_KEY = process.env.BLOCKCHAIR_API_KEY || 'A___EsSizQQ9Y2ukrBGc1X6tGbsogmFz';
+  // Tatum API keys from environment
+  const TATUM_KEY = network === 'testnet' 
+    ? process.env.TATUM_TESTNET_API_KEY
+    : process.env.TATUM_MAINNET_API_KEY;
   
-  // Select explorers based on network
-  const explorers = network === 'testnet' 
-    ? [
-        // Testnet explorers
-        {
-          url: 'https://testnet.zcashexplorer.app/api/tx/send',
-          method: 'POST',
-          format: 'insight'
-        }
-      ]
-    : [
-        // Mainnet: Use Blockchair push API
-        {
-          url: `https://api.blockchair.com/zcash/push/transaction?key=${BLOCKCHAIR_KEY}`,
-          method: 'POST',
-          format: 'blockchair'
-        }
-      ];
+  if (!TATUM_KEY) {
+    return res.status(500).json({ 
+      success: false,
+      error: 'Tatum API key not configured' 
+    });
+  }
+  
+  // Use Tatum RPC endpoint for Zcash
+  const tatumUrl = 'https://api.tatum.io/v3/blockchain/node/zcash-mainnet';
+  
+  const explorers = [
+    {
+      url: tatumUrl,
+      method: 'POST',
+      format: 'tatum-rpc',
+      apiKey: TATUM_KEY
+    }
+  ];
 
   for (const explorer of explorers) {
     try {
@@ -54,9 +56,15 @@ export default async function handler(req, res) {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
+          'x-api-key': explorer.apiKey,
           'User-Agent': 'ZincWallet/1.0'
         },
-        body: JSON.stringify(explorer.format === 'blockchair' ? { data: txHex } : { rawtx: txHex }),
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: Date.now(),
+          method: 'sendrawtransaction',
+          params: [txHex]
+        }),
         signal: AbortSignal.timeout(15000) // 15 second timeout for broadcast
       });
 
@@ -68,22 +76,22 @@ export default async function handler(req, res) {
 
       const data = await response.json();
       
-      // Blockchair format
-      if (explorer.format === 'blockchair' && data.data && data.data.transaction_hash) {
-        return res.status(200).json({
-          success: true,
-          txid: data.data.transaction_hash,
-          source: explorer.url
-        });
-      }
-      
-      // Insight API returns { txid: "..." }
-      if (data.txid) {
-        return res.status(200).json({
-          success: true,
-          txid: data.txid,
-          source: explorer.url
-        });
+      // Tatum RPC format: { result: "txid", error: null }
+      if (explorer.format === 'tatum-rpc') {
+        if (data.result) {
+          return res.status(200).json({
+            success: true,
+            txid: data.result,
+            source: 'Tatum Zcash RPC'
+          });
+        } else if (data.error) {
+          console.log(`Tatum RPC error: ${JSON.stringify(data.error)}`);
+          return res.status(400).json({
+            success: false,
+            error: data.error.message || 'Transaction broadcast failed',
+            details: data.error
+          });
+        }
       }
 
     } catch (error) {
