@@ -19,6 +19,9 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Address parameter required' });
   }
 
+  // Blockchair API key from environment
+  const BLOCKCHAIR_KEY = process.env.BLOCKCHAIR_API_KEY || 'A___EsSizQQ9Y2ukrBGc1X6tGbsogmFz';
+  
   // Select explorers based on network
   const explorers = network === 'testnet'
     ? [
@@ -29,14 +32,10 @@ export default async function handler(req, res) {
         }
       ]
     : [
-        // Mainnet explorers
+        // Mainnet: Use Blockchair (reliable and actively maintained)
         {
-          url: `https://insight.zcash.com/api/addr/${address}/utxo`,
-          format: 'insight'
-        },
-        {
-          url: `https://zcashnetwork.info/api/addr/${address}/utxo`,
-          format: 'insight'
+          url: `https://api.blockchair.com/zcash/dashboards/address/${address}?key=${BLOCKCHAIR_KEY}`,
+          format: 'blockchair'
         }
       ];
 
@@ -59,6 +58,27 @@ export default async function handler(req, res) {
       }
 
       const data = await response.json();
+      
+      // Blockchair format
+      if (explorer.format === 'blockchair' && data.data && data.data[address]) {
+        const addressData = data.data[address];
+        if (addressData.utxo && Array.isArray(addressData.utxo)) {
+          return res.status(200).json({
+            success: true,
+            utxos: addressData.utxo.map(utxo => ({
+              txid: utxo.transaction_hash,
+              vout: utxo.index,
+              address: address,
+              scriptPubKey: utxo.script_hex,
+              value: utxo.value,
+              satoshis: utxo.value,
+              height: utxo.block_id,
+              confirmations: addressData.address?.transaction_count || 0
+            })),
+            source: explorer.url
+          });
+        }
+      }
       
       // Insight API format (array of UTXOs)
       if (Array.isArray(data)) {

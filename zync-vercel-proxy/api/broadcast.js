@@ -23,6 +23,9 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'txHex parameter required' });
   }
 
+  // Blockchair API key from environment
+  const BLOCKCHAIR_KEY = process.env.BLOCKCHAIR_API_KEY || 'A___EsSizQQ9Y2ukrBGc1X6tGbsogmFz';
+  
   // Select explorers based on network
   const explorers = network === 'testnet' 
     ? [
@@ -34,16 +37,11 @@ export default async function handler(req, res) {
         }
       ]
     : [
-        // Mainnet explorers
+        // Mainnet: Use Blockchair push API
         {
-          url: 'https://insight.zcash.com/api/tx/send',
+          url: `https://api.blockchair.com/zcash/push/transaction?key=${BLOCKCHAIR_KEY}`,
           method: 'POST',
-          format: 'insight'
-        },
-        {
-          url: 'https://zcashnetwork.info/api/tx/send',
-          method: 'POST',
-          format: 'insight'
+          format: 'blockchair'
         }
       ];
 
@@ -58,7 +56,7 @@ export default async function handler(req, res) {
           'Accept': 'application/json',
           'User-Agent': 'ZincWallet/1.0'
         },
-        body: JSON.stringify({ rawtx: txHex }),
+        body: JSON.stringify(explorer.format === 'blockchair' ? { data: txHex } : { rawtx: txHex }),
         signal: AbortSignal.timeout(15000) // 15 second timeout for broadcast
       });
 
@@ -69,6 +67,15 @@ export default async function handler(req, res) {
       }
 
       const data = await response.json();
+      
+      // Blockchair format
+      if (explorer.format === 'blockchair' && data.data && data.data.transaction_hash) {
+        return res.status(200).json({
+          success: true,
+          txid: data.data.transaction_hash,
+          source: explorer.url
+        });
+      }
       
       // Insight API returns { txid: "..." }
       if (data.txid) {
