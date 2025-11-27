@@ -72,6 +72,12 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
   // Active wallet info
   const [activeWalletName, setActiveWalletName] = useState<string>('My Wallet');
   
+  // Session re-auth state
+  const [showReauthModal, setShowReauthModal] = useState(false);
+  const [reauthPassword, setReauthPassword] = useState('');
+  const [reauthError, setReauthError] = useState<string | null>(null);
+  const [reauthLoading, setReauthLoading] = useState(false);
+  
   // USD price state
   const [zecPriceUsd, setZecPriceUsd] = useState<number | null>(null);
   const [isLoadingPrice, setIsLoadingPrice] = useState(true);
@@ -507,6 +513,63 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
     }
   }
 
+  // Check if session has valid private key
+  async function checkSession(): Promise<boolean> {
+    try {
+      const response = await browser.runtime.sendMessage({
+        type: 'WALLET_ACTION',
+        action: 'CHECK_SESSION',
+        data: {}
+      });
+      return response.success && response.hasPrivateKey;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  // Handle session re-authentication
+  async function handleReauth() {
+    if (!reauthPassword.trim()) {
+      setReauthError('Please enter your password');
+      return;
+    }
+
+    setReauthLoading(true);
+    setReauthError(null);
+
+    try {
+      const response = await browser.runtime.sendMessage({
+        type: 'WALLET_ACTION',
+        action: 'UNLOCK',
+        data: { password: reauthPassword }
+      });
+
+      if (response.success) {
+        setShowReauthModal(false);
+        setReauthPassword('');
+        setShowSend(true); // Now open send dialog
+      } else {
+        setReauthError(response.error || 'Authentication failed');
+      }
+    } catch (error: any) {
+      setReauthError(error.message || 'Failed to authenticate');
+    } finally {
+      setReauthLoading(false);
+    }
+  }
+
+  // Handle opening send dialog with session check
+  async function handleOpenSend() {
+    const hasSession = await checkSession();
+    if (!hasSession) {
+      // Session expired, prompt for re-auth
+      setShowReauthModal(true);
+    } else {
+      // Session valid, open send dialog
+      setShowSend(true);
+    }
+  }
+
   async function handleProceedToConfirmation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     console.log('[Dashboard] Continue clicked, sendTo:', sendTo, 'sendAmount:', sendAmount);
@@ -782,7 +845,7 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
             <div className="space-y-2">
               {/* ZEC - Native Token */}
               <div 
-                onClick={() => setShowSend(true)}
+                onClick={handleOpenSend}
                 className="bg-zinc-900 border border-zinc-700 rounded-lg p-3 hover:border-amber-500 hover:bg-zinc-800 transition-all cursor-pointer"
               >
                 <div className="flex items-center justify-between">
@@ -1428,6 +1491,61 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
           onClose={() => setShowConnectedSites(false)}
           onDisconnect={checkPendingToast}
         />
+      )}
+
+      {/* Session Re-Authentication Modal */}
+      {showReauthModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-darker border border-zinc-700 rounded-xl w-full max-w-md p-6">
+            <h2 className="text-xl font-semibold text-white mb-2">Session Expired</h2>
+            <p className="text-sm text-zinc-400 mb-4">
+              Your session has expired. Please enter your password to continue.
+            </p>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-2">Password</label>
+                <input
+                  type="password"
+                  value={reauthPassword}
+                  onChange={(e) => setReauthPassword(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleReauth()}
+                  className="input w-full"
+                  placeholder="Enter your password"
+                  disabled={reauthLoading}
+                  autoFocus
+                />
+              </div>
+
+              {reauthError && (
+                <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-3">
+                  <p className="text-sm text-red-400">{reauthError}</p>
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={() => {
+                    setShowReauthModal(false);
+                    setReauthPassword('');
+                    setReauthError(null);
+                  }}
+                  className="flex-1 btn btn-secondary"
+                  disabled={reauthLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleReauth}
+                  className="flex-1 btn btn-primary"
+                  disabled={reauthLoading}
+                >
+                  {reauthLoading ? 'Unlocking...' : 'Unlock'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

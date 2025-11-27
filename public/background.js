@@ -3066,6 +3066,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             result = await handleEstimateFee(message.data);
             break;
           
+          case 'CHECK_SESSION': {
+            // Check if session has cached private key
+            const session = await chrome.storage.session.get(['cachedPrivateKey']);
+            result = {
+              success: true,
+              hasPrivateKey: !!session.cachedPrivateKey
+            };
+            break;
+          }
+          
           case 'SEND_ZEC':
             result = await handleSendZec(message.data);
             break;
