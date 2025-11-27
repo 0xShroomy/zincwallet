@@ -1,12 +1,43 @@
-# Zync Wallet Blockchain Indexer
+# Zync Wallet Indexer
 
-## What This Does
+Scans Zcash blockchain for Zinc and Zerdinals inscriptions.
 
-Scans the Zcash blockchain for Zinc Protocol inscriptions and populates your Supabase database with:
-- ZRC-20 token balances
-- NFT ownership
-- Inscription history
+## Features
+- Zinc Protocol (ZRC-20 tokens)
+- Zerdinals Protocol (NFT inscriptions)
+- Automatic balance tracking
+- Supabase storage
+- Continuous 24/7 monitoring
 
+## Setup
+
+```bash
+npm install
+cp .env.example .env
+# Configure environment variables
+npm start
+```
+
+## Configuration
+
+### START_BLOCK
+The indexer will scan from this block onwards. Current default: `3100000`
+
+**Block Timeline:**
+- Block 3100000 ≈ 7-8 weeks ago
+- Block 3139000 ≈ 9 days ago
+- Current block ≈ 3149532
+
+**To index ALL inscriptions from the beginning:**
+Set `START_BLOCK=3050000` in your `.env` file (goes back ~3 months)
+
+**To start from today:**
+Set `START_BLOCK=3149500` in your `.env` file
+
+### Historical Scan Performance
+- ~50,000 blocks = 4-6 hours initial scan
+- ~100,000 blocks = 8-12 hours initial scan
+- After catching up, scans every 5 minutes
 Runs continuously, scanning new blocks every 5 minutes.
 
 ---

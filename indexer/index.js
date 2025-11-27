@@ -6,7 +6,7 @@ const BLOCKCHAIR_API_KEY = process.env.BLOCKCHAIR_API_KEY;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 const SCAN_INTERVAL = parseInt(process.env.SCAN_INTERVAL_SECONDS || '300') * 1000;
-const START_BLOCK = parseInt(process.env.START_BLOCK || '3139000');
+const START_BLOCK = parseInt(process.env.START_BLOCK || '3100000');
 const NETWORK = process.env.NETWORK || 'mainnet';
 
 // Validate configuration
@@ -253,7 +253,8 @@ async function processTransaction(txid, blockHeight) {
         protocol: 'zinc',
         operation: inscription.operation,
         data: inscription.data,
-        sender_address: tx.inputs[0]?.recipient || null
+        sender_address: tx.inputs[0]?.recipient || null,
+        network: NETWORK
       });
       
       // Process based on operation type
@@ -283,7 +284,8 @@ async function processTransaction(txid, blockHeight) {
         content_data: inscription.contentData, // Store full content!
         content_size: inscription.data.size,
         data: inscription.data,
-        sender_address: input.recipient || null
+        sender_address: input.recipient || null,
+        network: NETWORK
       });
       
       // Process Zerdinals inscriptions
