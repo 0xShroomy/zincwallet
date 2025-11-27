@@ -6,7 +6,7 @@ const BLOCKCHAIR_API_KEY = process.env.BLOCKCHAIR_API_KEY;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 const SCAN_INTERVAL = parseInt(process.env.SCAN_INTERVAL_SECONDS || '300') * 1000;
-const START_BLOCK = parseInt(process.env.START_BLOCK || '3100000');
+const START_BLOCK = parseInt(process.env.START_BLOCK || '3141500');
 const NETWORK = process.env.NETWORK || 'mainnet';
 
 // Validate configuration
@@ -67,13 +67,17 @@ async function getLastScannedBlock() {
 
 // Update last scanned block
 async function updateLastScannedBlock(blockHeight) {
-  await supabase
+  const { data, error } = await supabase
     .from('indexer_state')
     .upsert({ 
       id: 1, 
       last_scanned_block: blockHeight,
       last_scan_time: new Date().toISOString()
     });
+  
+  if (error) {
+    console.error('❌ Failed to update indexer state:', error);
+  }
 }
 
 // Fetch block transactions from Blockchair
@@ -223,14 +227,18 @@ function parseZerdinalsInscription(scriptSigHex) {
 }
 
 // Process transaction for inscriptions (both Zinc and Zerdinals)
-async function processTransaction(txid, blockHeight) {
+async function processTransaction(txid, blockHeight, txData = null) {
   try {
-    // Fetch transaction details
-    const url = `https://api.blockchair.com/zcash/dashboards/transaction/${txid}?key=${BLOCKCHAIR_API_KEY}`;
-    const response = await fetch(url);
-    const data = await response.json();
+    let tx = txData;
     
-    const tx = data.data[txid];
+    // Only fetch if not provided in batch
+    if (!tx) {
+      const url = `https://api.blockchair.com/zcash/dashboards/transaction/${txid}?key=${BLOCKCHAIR_API_KEY}`;
+      const response = await fetch(url);
+      const data = await response.json();
+      tx = data.data[txid];
+    }
+    
     if (!tx) return;
     
     let foundInscription = false;
@@ -246,7 +254,7 @@ async function processTransaction(txid, blockHeight) {
       console.log(`📝 Found Zinc inscription in ${txid}`);
       
       // Save to database
-      await supabase.from('inscriptions').upsert({
+      const { error: zincError } = await supabase.from('inscriptions').upsert({
         txid: txid,
         block_height: blockHeight,
         timestamp: tx.transaction.time,
@@ -256,6 +264,10 @@ async function processTransaction(txid, blockHeight) {
         sender_address: tx.inputs[0]?.recipient || null,
         network: NETWORK
       });
+      
+      if (zincError) {
+        console.error('❌ Failed to save Zinc inscription:', zincError);
+      }
       
       // Process based on operation type
       if (inscription.subProtocol === 'zrc-20') {
@@ -391,8 +403,31 @@ async function scanBlocks() {
       if (txids.length > 0) {
         console.log(`📦 Block ${block}: ${txids.length} transactions`);
         
-        for (const txid of txids) {
-          await processTransaction(txid, block);
+        // Batch fetch transaction details (up to 10 at a time)
+        const batchSize = 10;
+        for (let i = 0; i < txids.length; i += batchSize) {
+          const batch = txids.slice(i, i + batchSize);
+          
+          try {
+            // Batch API call for multiple transactions
+            const batchUrl = `https://api.blockchair.com/zcash/dashboards/transactions/${batch.join(',')}?key=${BLOCKCHAIR_API_KEY}`;
+            const batchResponse = await fetch(batchUrl);
+            const batchData = await batchResponse.json();
+            
+            // Process each transaction with pre-fetched data
+            for (const txid of batch) {
+              const txData = batchData.data?.[txid];
+              if (txData) {
+                await processTransaction(txid, block, txData);
+              }
+            }
+          } catch (error) {
+            console.error(`❌ Batch fetch failed for block ${block}:`, error.message);
+            // Fallback to individual fetches
+            for (const txid of batch) {
+              await processTransaction(txid, block);
+            }
+          }
         }
         
         processedCount++;
