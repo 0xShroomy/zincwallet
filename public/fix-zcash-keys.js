@@ -1,15 +1,8 @@
-/**
- * FIXED Zcash Key Derivation - Uses Real secp256k1
- * Replaces the broken getPublicKey() function
- */
 
-// Import the noble secp256k1 library functions we need
-// This is a temporary fix - ideally we'd bundle @noble/secp256k1 properly
 
 self.FixedZcashKeys = (() => {
   
-  // Minimal secp256k1 using BigInt (based on libsecp256k1 algorithms)
-  // This implements the actual elliptic curve math
+
   
   const P = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2Fn;
   const N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141n;
@@ -148,12 +141,14 @@ self.FixedZcashKeys = (() => {
     const sWithPrefix = (sBytes[0] & 0x80) ? new Uint8Array([0x00, ...sBytes]) : sBytes;
     
     // DER structure: 0x30 [total-length] 0x02 [r-length] [r] 0x02 [s-length] [s]
-    const totalLength = 2 + rWithPrefix.length + 2 + sWithPrefix.length;
-    const der = new Uint8Array(2 + totalLength);
+    // total-length = everything after the length byte
+    const contentLength = 2 + rWithPrefix.length + 2 + sWithPrefix.length;
+    const totalLength = 2 + contentLength; // 0x30 + length byte + content
+    const der = new Uint8Array(totalLength);
     
     let offset = 0;
     der[offset++] = 0x30; // SEQUENCE
-    der[offset++] = totalLength;
+    der[offset++] = contentLength; // Length of content (not including 0x30 and this byte)
     der[offset++] = 0x02; // INTEGER
     der[offset++] = rWithPrefix.length;
     der.set(rWithPrefix, offset);
@@ -161,6 +156,7 @@ self.FixedZcashKeys = (() => {
     der[offset++] = 0x02; // INTEGER
     der[offset++] = sWithPrefix.length;
     der.set(sWithPrefix, offset);
+    offset += sWithPrefix.length;
     
     return der;
   }
