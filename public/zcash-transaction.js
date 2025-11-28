@@ -251,7 +251,7 @@ self.ZcashTransaction = (function() {
    * Serialize transaction for signing using ZIP-244 (v5 transactions)
    * Uses BLAKE2b-256 with personalization strings
    */
-  function serializeForSigning(tx, inputIndex, prevScript) {
+  function serializeForSigning(tx, inputIndex, prevScript, utxos) {
     // ZIP-244: Build signature digest using BLAKE2b-256
     
     // S.1: header_digest
@@ -263,38 +263,63 @@ self.ZcashTransaction = (function() {
     headerData.push(...encodeUint32LE(tx.expiryHeight));
     const headerDigest = blake2b256(new Uint8Array(headerData), 'ZTxIdHeadersHash');
     
-    // S.2: transparent_digest components
-    // S.2a: prevouts_digest
+    // S.2: transparent_sig_digest components (different from txid!)
+    const hashType = 0x01; // SIGHASH_ALL
+    
+    // S.2b: prevouts_sig_digest (same as txid for SIGHASH_ALL)
     const prevoutsData = [];
     for (const input of tx.inputs) {
       const txidBytes = hexToBytes(input.txid);
       prevoutsData.push(...Array.from(txidBytes).reverse());
       prevoutsData.push(...encodeUint32LE(input.vout));
     }
-    const prevoutsDigest = blake2b256(new Uint8Array(prevoutsData), 'ZTxIdPrevoutHash');
+    const prevoutsSigDigest = blake2b256(new Uint8Array(prevoutsData), 'ZTxIdPrevoutHash');
     
-    // S.2b: sequence_digest
+    // S.2c: amounts_sig_digest (hash of all input amounts)
+    const amountsData = [];
+    for (const input of tx.inputs) {
+      const inputValue = BigInt(input.value || 0);
+      amountsData.push(...encodeUint64LE(inputValue));
+    }
+    const amountsSigDigest = blake2b256(new Uint8Array(amountsData), 'ZTxTrAmountsHash');
+    
+    // S.2d: scriptpubkeys_sig_digest (hash of all input scriptPubKeys)
+    // For SIGHASH_ALL, include ALL input scriptPubKeys
+    const scriptPubKeysData = [];
+    for (let i = 0; i < tx.inputs.length; i++) {
+      const utxo = utxos[i];
+      const scriptPubKey = hexToBytes(utxo.scriptPubKey || '');
+      scriptPubKeysData.push(...encodeVarInt(scriptPubKey.length));
+      scriptPubKeysData.push(...scriptPubKey);
+    }
+    const scriptPubKeysSigDigest = blake2b256(new Uint8Array(scriptPubKeysData), 'ZTxTrScriptsHash');
+    
+    // S.2e: sequence_sig_digest
     const sequenceData = [];
     for (const input of tx.inputs) {
       sequenceData.push(...encodeUint32LE(input.sequence));
     }
-    const sequenceDigest = blake2b256(new Uint8Array(sequenceData), 'ZTxIdSequencHash');
+    const sequenceSigDigest = blake2b256(new Uint8Array(sequenceData), 'ZTxIdSequencHash');
     
-    // S.2c: outputs_digest (for SIGHASH_ALL, hash all outputs)
+    // S.2f: outputs_sig_digest (for SIGHASH_ALL, hash all outputs)
     const outputsData = [];
     for (const output of tx.outputs) {
       outputsData.push(...encodeUint64LE(output.value));
       outputsData.push(...encodeVarInt(output.script.length));
       outputsData.push(...output.script);
     }
-    const outputsDigest = blake2b256(new Uint8Array(outputsData), 'ZTxIdOutputsHash');
+    const outputsSigDigest = blake2b256(new Uint8Array(outputsData), 'ZTxIdOutputsHash');
     
-    // S.2d: transparent_digest = hash(prevouts_digest || sequence_digest || outputs_digest)
-    const transparentData = [];
-    transparentData.push(...prevoutsDigest);
-    transparentData.push(...sequenceDigest);
-    transparentData.push(...outputsDigest);
-    const transparentDigest = blake2b256(new Uint8Array(transparentData), 'ZTxIdTranspaHash');
+    // transparent_sig_digest = hash(hash_type || prevouts || amounts || scriptpubkeys || sequence || outputs || txin)
+    const transparentSigData = [];
+    transparentSigData.push(hashType); // S.2a: 1 byte
+    transparentSigData.push(...prevoutsSigDigest); // S.2b
+    transparentSigData.push(...amountsSigDigest); // S.2c
+    transparentSigData.push(...scriptPubKeysSigDigest); // S.2d
+    transparentSigData.push(...sequenceSigDigest); // S.2e
+    transparentSigData.push(...outputsSigDigest); // S.2f
+    // txin_sig_digest (S.2g) will be added below
+    const transparentDigest = transparentSigData; // Don't hash yet, need to add txin_sig_digest
     
     // S.2g: txin_sig_digest (the input being signed)
     const input = tx.inputs[inputIndex];
@@ -313,6 +338,10 @@ self.ZcashTransaction = (function() {
     txinData.push(...encodeUint32LE(input.sequence));
     const txinSigDigest = blake2b256(new Uint8Array(txinData), 'Zcash___TxInHash');
     
+    // Add txin_sig_digest to transparent_sig_data and hash it
+    transparentSigData.push(...txinSigDigest); // S.2g
+    const transparentSigDigest = blake2b256(new Uint8Array(transparentSigData), 'ZTxIdTranspaHash');
+    
     // S.3: sapling_digest (empty for transparent-only)
     const saplingDigest = blake2b256Empty('ZTxIdSaplingHash');
     
@@ -322,16 +351,13 @@ self.ZcashTransaction = (function() {
     // Final signature digest: BLAKE2b-256 of all components
     const sigData = [];
     sigData.push(...headerDigest);
-    sigData.push(...transparentDigest);
+    sigData.push(...transparentSigDigest); // Now properly hashed!
     sigData.push(...saplingDigest);
     sigData.push(...orchardDigest);
-    sigData.push(...txinSigDigest);
     
     // Personalization for signature: "ZcashSigHash" (12 bytes) + branch_id (4 bytes LE)
-    // According to ZIP-244, signature digest uses "ZcashSigHash" not "ZcashTxHash_"
     const branchIdBytes = encodeUint32LE(tx.consensusBranchId);
     const personalizationPrefix = 'ZcashSigHash'; // 12 bytes
-    // Construct full 16-byte personalization by appending branch ID bytes as chars
     const personalization = personalizationPrefix + String.fromCharCode(...branchIdBytes);
     
     console.log('[ZIP-244] Signing input', inputIndex, 'value:', utxoValue.toString());
@@ -355,7 +381,7 @@ self.ZcashTransaction = (function() {
       const prevScript = hexToBytes(utxo.scriptPubKey || '');
       
       // Get signature hash using ZIP-244 (already returns final BLAKE2b-256 hash)
-      const sigHash = serializeForSigning(tx, i, prevScript);
+      const sigHash = serializeForSigning(tx, i, prevScript, utxos);
       
       console.log('[ZcashTx] Signing input', i, 'hash:', bytesToHex(sigHash));
       
