@@ -11,6 +11,7 @@ console.log('[Background] Starting...');
 /* global importScripts CryptoJS */
 importScripts('crypto-js.min.js'); // For RIPEMD160
 importScripts('bip39.js');
+importScripts('blake2b.js'); // BLAKE2b for ZIP-244 v5 transaction signing
 importScripts('fix-zcash-keys.js'); // REAL secp256k1 implementation - MUST load before zcash-keys.js
 importScripts('zcash-keys.js');
 importScripts('blockchain-client.js');
