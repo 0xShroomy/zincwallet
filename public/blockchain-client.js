@@ -234,9 +234,17 @@ self.LightwalletdClient = (function() {
           }
         }
         
+        // Parse error response to get the actual Tatum error
+        const errorData = await response.json().catch(() => ({}));
         console.error(`[Lightwalletd] Proxy broadcast failed (${response.status})`);
+        console.error('[Lightwalletd] Error details:', JSON.stringify(errorData, null, 2));
+        
+        // Throw the actual error message from Tatum
+        const errorMsg = errorData.error || errorData.tatumError?.message || 'Transaction broadcast failed';
+        throw new Error(`Broadcast failed: ${errorMsg}`);
       } catch (error) {
         console.error('[Lightwalletd] Proxy error:', error.message);
+        throw error;
       }
     }
     
