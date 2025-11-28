@@ -273,6 +273,33 @@ self.LightwalletdClient = (function() {
     return `${NETWORKS[currentNetwork].explorer}/address/${address}`;
   }
   
+  /**
+   * Get current block height for calculating expiry
+   */
+  async function getBlockHeight() {
+    const url = `${PROXY_URL}/blockheight?network=${currentNetwork}`;
+    
+    try {
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      if (data.blockHeight) {
+        console.log('[Lightwalletd] Current block height:', data.blockHeight);
+        return data.blockHeight;
+      }
+      
+      // Fallback: safe default (will be updated periodically)
+      const fallback = 3150000 + Math.floor((Date.now() - 1732754400000) / 75000); // ~75 sec/block
+      console.warn('[Lightwalletd] Using estimated block height:', fallback);
+      return fallback;
+    } catch (error) {
+      console.warn('[Lightwalletd] Failed to get block height:', error);
+      // Estimate based on timestamp (Zcash ~75 sec/block)
+      const fallback = 3150000 + Math.floor((Date.now() - 1732754400000) / 75000);
+      return fallback;
+    }
+  }
+
   return {
     getBalance,
     getUtxos,
@@ -283,6 +310,7 @@ self.LightwalletdClient = (function() {
     getExplorerUrl,
     getTransactionUrl,
     getAddressUrl,
+    getBlockHeight
   };
   
 })();

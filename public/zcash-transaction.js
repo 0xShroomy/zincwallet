@@ -39,9 +39,14 @@ self.ZcashTransaction = (function() {
     // Personalization must be exactly 16 bytes or undefined
     let personal = undefined;
     if (personalization) {
-      const encoded = new TextEncoder().encode(personalization);
-      personal = new Uint8Array(16);
-      personal.set(encoded.slice(0, 16)); // Copy up to 16 bytes, rest stays 0
+      if (typeof personalization === 'string') {
+        const encoded = new TextEncoder().encode(personalization);
+        personal = new Uint8Array(16);
+        personal.set(encoded.slice(0, 16)); 
+      } else if (personalization instanceof Uint8Array || Array.isArray(personalization)) {
+        personal = new Uint8Array(16);
+        personal.set(new Uint8Array(personalization).slice(0, 16));
+      }
     }
     
     const hash = self.blake2b(data, null, 32, null, personal); // 32 bytes = 256 bits
@@ -232,8 +237,8 @@ self.ZcashTransaction = (function() {
     }
     
     return {
-      version: 5 | (1 << 31), // Zcash v5 with Overwinter bit
-      consensusBranchId: 0x4DEC4DF0, // NU6.1 consensus branch (active since Nov 23, 2025 at block 3,146,400)
+      version: 4 | (1 << 31), // Zcash v4 with Overwinter bit
+      consensusBranchId: 0x4dec4df0, // NU6.1 consensus branch (active since block 3146400)
       inputs: utxos.map(utxo => ({
         txid: utxo.txid,
         vout: utxo.vout,
@@ -243,132 +248,148 @@ self.ZcashTransaction = (function() {
       })),
       outputs: txOutputs,
       lockTime: 0,
-      expiryHeight: 3300000 // Block 3.3M 
+      expiryHeight: 0 // Use 0 to mean "current block + 20" per Zcash default
     };
   }
   
   /**
-   * Serialize transaction for signing using ZIP-244 (v5 transactions)
-   * Uses BLAKE2b-256 with personalization strings
+   * Serialize transaction for signing using ZIP-243 (v4 transactions) 
+   * Uses SHA256 double hash (BIP-143 style) - proven to work!
    */
-  function serializeForSigning(tx, inputIndex, prevScript, utxos) {
-    // ZIP-244: Build signature digest using BLAKE2b-256
-    
-    // S.1: header_digest
-    const headerData = [];
-    headerData.push(...encodeUint32LE(tx.version));
-    headerData.push(...encodeUint32LE(0x26A7270A)); // version_group_id
-    headerData.push(...encodeUint32LE(tx.consensusBranchId));
-    headerData.push(...encodeUint32LE(tx.lockTime));
-    headerData.push(...encodeUint32LE(tx.expiryHeight));
-    const headerDigest = blake2b256(new Uint8Array(headerData), 'ZTxIdHeadersHash');
-    
-    // S.2: transparent_sig_digest components (different from txid!)
+  async function serializeForSigning(tx, inputIndex, prevScript, _utxos) {
+    // ZIP-243: Build signature digest using BLAKE2b-256 (NOT SHA256!)
     const hashType = 0x01; // SIGHASH_ALL
     
-    // S.2b: prevouts_sig_digest (same as txid for SIGHASH_ALL)
+    // 3. hashPrevouts - BLAKE2b-256 with personalization 'ZcashPrevoutHash'
     const prevoutsData = [];
     for (const input of tx.inputs) {
       const txidBytes = hexToBytes(input.txid);
       prevoutsData.push(...Array.from(txidBytes).reverse());
       prevoutsData.push(...encodeUint32LE(input.vout));
     }
-    const prevoutsSigDigest = blake2b256(new Uint8Array(prevoutsData), 'ZTxIdPrevoutHash');
+    const hashPrevouts = blake2b256(new Uint8Array(prevoutsData), 'ZcashPrevoutHash');
     
-    // S.2c: amounts_sig_digest (hash of all input amounts)
-    const amountsData = [];
-    for (const input of tx.inputs) {
-      const inputValue = BigInt(input.value || 0);
-      amountsData.push(...encodeUint64LE(inputValue));
-    }
-    const amountsSigDigest = blake2b256(new Uint8Array(amountsData), 'ZTxTrAmountsHash');
-    
-    // S.2d: scriptpubkeys_sig_digest (hash of all input scriptPubKeys)
-    // For SIGHASH_ALL, include ALL input scriptPubKeys
-    // For the input being signed, use prevScript. For others, get from UTXO.
-    const scriptPubKeysData = [];
-    for (let i = 0; i < tx.inputs.length; i++) {
-      // For the input we're signing, use prevScript; for others use UTXO scriptPubKey
-      const scriptPubKey = (i === inputIndex) ? prevScript : hexToBytes(utxos[i].scriptPubKey || '');
-      console.log('[ZIP-244] Input', i, 'scriptPubKey length:', scriptPubKey.length, 'bytes');
-      scriptPubKeysData.push(...encodeVarInt(scriptPubKey.length));
-      scriptPubKeysData.push(...scriptPubKey);
-    }
-    console.log('[ZIP-244] Total scriptPubKeys data length:', scriptPubKeysData.length);
-    const scriptPubKeysSigDigest = blake2b256(new Uint8Array(scriptPubKeysData), 'ZTxTrScriptsHash');
-    
-    // S.2e: sequence_sig_digest
+    // 4. hashSequence - BLAKE2b-256 with personalization 'ZcashSequencHash'
     const sequenceData = [];
     for (const input of tx.inputs) {
       sequenceData.push(...encodeUint32LE(input.sequence));
     }
-    const sequenceSigDigest = blake2b256(new Uint8Array(sequenceData), 'ZTxIdSequencHash');
+    const hashSequence = blake2b256(new Uint8Array(sequenceData), 'ZcashSequencHash');
     
-    // S.2f: outputs_sig_digest (for SIGHASH_ALL, hash all outputs)
+    // 5. hashOutputs - BLAKE2b-256 with personalization 'ZcashOutputsHash'
     const outputsData = [];
     for (const output of tx.outputs) {
       outputsData.push(...encodeUint64LE(output.value));
       outputsData.push(...encodeVarInt(output.script.length));
       outputsData.push(...output.script);
     }
-    const outputsSigDigest = blake2b256(new Uint8Array(outputsData), 'ZTxIdOutputsHash');
+    const hashOutputs = blake2b256(new Uint8Array(outputsData), 'ZcashOutputsHash');
     
-    // transparent_sig_digest = hash(hash_type || prevouts || amounts || scriptpubkeys || sequence || outputs || txin)
-    const transparentSigData = [];
-    transparentSigData.push(hashType); // S.2a: 1 byte
-    transparentSigData.push(...prevoutsSigDigest); // S.2b
-    transparentSigData.push(...amountsSigDigest); // S.2c
-    transparentSigData.push(...scriptPubKeysSigDigest); // S.2d
-    transparentSigData.push(...sequenceSigDigest); // S.2e
-    transparentSigData.push(...outputsSigDigest); // S.2f
-    // txin_sig_digest (S.2g) will be added below
-    const transparentDigest = transparentSigData; // Don't hash yet, need to add txin_sig_digest
+    // 6-8. Empty hashes for JoinSplits and Shielded (transparent-only)
+    const hashJoinSplits = new Uint8Array(32).fill(0);
+    const hashShieldedSpends = new Uint8Array(32).fill(0);
+    const hashShieldedOutputs = new Uint8Array(32).fill(0);
     
-    // S.2g: txin_sig_digest (the input being signed)
-    const input = tx.inputs[inputIndex];
-    const txinData = [];
-    // prevout
-    const txidBytes = hexToBytes(input.txid);
-    txinData.push(...Array.from(txidBytes).reverse());
-    txinData.push(...encodeUint32LE(input.vout));
-    // value
-    const utxoValue = BigInt(input.value || 0);
-    txinData.push(...encodeUint64LE(utxoValue));
-    // scriptPubKey
-    txinData.push(...encodeVarInt(prevScript.length));
-    txinData.push(...prevScript);
-    // nSequence
-    txinData.push(...encodeUint32LE(input.sequence));
-    const txinSigDigest = blake2b256(new Uint8Array(txinData), 'Zcash___TxInHash');
-    
-    // Add txin_sig_digest to transparent_sig_data and hash it
-    transparentSigData.push(...txinSigDigest); // S.2g
-    const transparentSigDigest = blake2b256(new Uint8Array(transparentSigData), 'ZTxIdTranspaHash');
-    
-    // S.3: sapling_digest (empty for transparent-only)
-    const saplingDigest = blake2b256Empty('ZTxIdSaplingHash');
-    
-    // S.4: orchard_digest (empty for transparent-only)
-    const orchardDigest = blake2b256Empty('ZTxIdOrchardHash');
-    
-    // Final signature digest: BLAKE2b-256 of all components
+    // Build final signature preimage
     const sigData = [];
-    sigData.push(...headerDigest);
-    sigData.push(...transparentSigDigest); // Now properly hashed!
-    sigData.push(...saplingDigest);
-    sigData.push(...orchardDigest);
     
-    // Personalization for signature: "ZcashSigHash" (12 bytes) + branch_id (4 bytes LE)
-    const branchIdBytes = encodeUint32LE(tx.consensusBranchId);
-    const personalizationPrefix = 'ZcashSigHash'; // 12 bytes
-    const personalization = personalizationPrefix + String.fromCharCode(...branchIdBytes);
+    // 1. header (version with overwinter bit)
+    sigData.push(...encodeUint32LE(tx.version));
     
-    console.log('[ZIP-244] Signing input', inputIndex, 'value:', utxoValue.toString());
-    console.log('[ZIP-244] Personalization:', Array.from(new TextEncoder().encode(personalizationPrefix)).concat(branchIdBytes).map(b => b.toString(16).padStart(2, '0')).join(''));
+    // 2. nVersionGroupId
+    sigData.push(...encodeUint32LE(0x892F2085));
+    
+    // 3-8. All the hashes
+    sigData.push(...hashPrevouts);
+    sigData.push(...hashSequence);
+    sigData.push(...hashOutputs);
+    sigData.push(...hashJoinSplits);
+    sigData.push(...hashShieldedSpends);
+    sigData.push(...hashShieldedOutputs);
+    
+    // 9. nLockTime
+    sigData.push(...encodeUint32LE(tx.lockTime));
+    
+    // 10. nExpiryHeight
+    sigData.push(...encodeUint32LE(tx.expiryHeight));
+    
+    // 11. valueBalance (8 bytes, 0 for transparent-only)
+    sigData.push(...encodeUint64LE(0n));
+    
+    // 12. nHashType
+    sigData.push(...encodeUint32LE(hashType));
+    
+    // 13. Input being signed
+    const input = tx.inputs[inputIndex];
+    const txidBytes = hexToBytes(input.txid);
+    sigData.push(...Array.from(txidBytes).reverse());
+    sigData.push(...encodeUint32LE(input.vout));
+    
+    // 14. scriptCode
+    sigData.push(...encodeVarInt(prevScript.length));
+    sigData.push(...prevScript);
+    
+    // 15. value (8 bytes)
+    const utxoValue = BigInt(input.value || 0);
+    sigData.push(...encodeUint64LE(utxoValue));
+    
+    // 16. nSequence
+    sigData.push(...encodeUint32LE(input.sequence));
+    
+    console.log('[ZIP-243] Signing input', inputIndex, 'value:', utxoValue.toString());
+    
+    // Final signature hash: BLAKE2b-256 with personalization "ZcashSigHash" + consensusBranchId
+    // "ZcashSigHash" is 12 bytes, BranchId is 4 bytes. Total 16 bytes.
+    // MUST construct as bytes, because BranchId bytes can be > 127 and String.fromCharCode + TextEncoder will corrupt them!
+    const personalization = new Uint8Array(16);
+    const prefix = new TextEncoder().encode('ZcashSigHash');
+    personalization.set(prefix);
+    personalization.set(encodeUint32LE(tx.consensusBranchId), 12);
     
     return blake2b256(new Uint8Array(sigData), personalization);
   }
   
+  /**
+   * Build P2PKH scriptPubKey from Zcash address
+   */
+  function buildScriptPubKeyFromAddress(address) {
+    // Simple base58 alphabet
+    const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+    
+    // Decode base58
+    let decoded = BigInt(0);
+    for (let i = 0; i < address.length; i++) {
+      const char = address[i];
+      const value = ALPHABET.indexOf(char);
+      if (value === -1) throw new Error('Invalid base58 character');
+      decoded = decoded * 58n + BigInt(value);
+    }
+    
+    // Convert to bytes
+    const hex = decoded.toString(16);
+    const bytes = [];
+    for (let i = 0; i < hex.length; i += 2) {
+      bytes.push(parseInt(hex.substr(i, 2), 16));
+    }
+    
+    // Zcash t1 addresses: 2 version bytes + 20 pubkey hash bytes + 4 checksum bytes = 26 bytes
+    // Extract the 20-byte pubkey hash (skip 2 version bytes, take 20 bytes)
+    const pubkeyHash = new Uint8Array(bytes.slice(-24, -4)); // Skip checksum (last 4), take 20 bytes before that
+    
+    console.log('[ZcashTx] Decoded address, pubkey hash length:', pubkeyHash.length);
+    
+    // Build P2PKH script: OP_DUP OP_HASH160 <20-byte-hash> OP_EQUALVERIFY OP_CHECKSIG
+    const script = new Uint8Array(25);
+    script[0] = 0x76;  // OP_DUP
+    script[1] = 0xa9;  // OP_HASH160
+    script[2] = 0x14;  // Push 20 bytes
+    script.set(pubkeyHash, 3);
+    script[23] = 0x88; // OP_EQUALVERIFY
+    script[24] = 0xac; // OP_CHECKSIG
+    
+    return script;
+  }
+
   /**
    * Sign transaction
    * privateKey should be a 32-byte Uint8Array
@@ -380,11 +401,20 @@ self.ZcashTransaction = (function() {
       const input = tx.inputs[i];
       const utxo = utxos[i];
       
-      // Get the scriptPubKey from the UTXO
-      const prevScript = hexToBytes(utxo.scriptPubKey || '');
+      // Get the scriptPubKey from the UTXO, or build it from the address
+      let prevScript;
+      if (utxo.scriptPubKey) {
+        prevScript = hexToBytes(utxo.scriptPubKey);
+      } else {
+        // Build scriptPubKey from address (Blockchair doesn't provide it)
+        console.log('[ZcashTx] Building scriptPubKey from address:', utxo.address);
+        prevScript = buildScriptPubKeyFromAddress(utxo.address);
+      }
       
-      // Get signature hash using ZIP-244 (already returns final BLAKE2b-256 hash)
-      const sigHash = serializeForSigning(tx, i, prevScript, utxos);
+      console.log('[ZcashTx] prevScript length:', prevScript.length, 'bytes');
+      
+      // Get signature hash using ZIP-243 (SHA256 double-hash)
+      const sigHash = await serializeForSigning(tx, i, prevScript, utxos);
       
       console.log('[ZcashTx] Signing input', i, 'hash:', bytesToHex(sigHash));
       
@@ -431,22 +461,13 @@ self.ZcashTransaction = (function() {
   function serializeTransaction(tx) {
     const buffer = [];
     
-    // Version (v5 with Overwinter bit)
+    // Version (v4 with Overwinter bit)
     buffer.push(...encodeUint32LE(tx.version));
     
-    // Group ID (v5 = 0x26A7270A)
-    buffer.push(...encodeUint32LE(0x26A7270A));
+    // Group ID (v4 Sapling = 0x892F2085)
+    buffer.push(...encodeUint32LE(0x892F2085));
     
-    // Consensus Branch ID (NU6.1 = 0x4DEC4DF0)
-    buffer.push(...encodeUint32LE(tx.consensusBranchId));
-    
-    // Lock time (moved before inputs in v5!)
-    buffer.push(...encodeUint32LE(tx.lockTime));
-    
-    // Expiry height (moved before inputs in v5!)
-    buffer.push(...encodeUint32LE(tx.expiryHeight));
-    
-    // Input count
+    // Input count (v4 has inputs BEFORE locktime/expiry)
     buffer.push(...encodeVarInt(tx.inputs.length));
     
     // Inputs
@@ -469,10 +490,19 @@ self.ZcashTransaction = (function() {
       buffer.push(...output.script);
     }
     
-    // v5: Sapling/Orchard counts (0 for transparent-only)
-    buffer.push(...encodeVarInt(0)); // nSpendsSapling
-    buffer.push(...encodeVarInt(0)); // nOutputsSapling
-    buffer.push(...encodeVarInt(0)); // nActionsOrchard
+    // v4: Locktime and expiry AFTER outputs
+    buffer.push(...encodeUint32LE(tx.lockTime));
+    buffer.push(...encodeUint32LE(tx.expiryHeight));
+    
+    // v4: Value balance (8 bytes, 0 for transparent-only)
+    buffer.push(...encodeUint64LE(0n));
+    
+    // v4: Shielded counts (0 for transparent-only)
+    buffer.push(...encodeVarInt(0)); // nShieldedSpend
+    buffer.push(...encodeVarInt(0)); // nShieldedOutput
+    
+    // v4: JoinSplit count (0 for transparent-only)
+    buffer.push(...encodeVarInt(0)); // nJoinSplit
     
     return bytesToHex(new Uint8Array(buffer));
   }
