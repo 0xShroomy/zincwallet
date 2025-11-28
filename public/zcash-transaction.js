@@ -327,11 +327,16 @@ self.ZcashTransaction = (function() {
     sigData.push(...orchardDigest);
     sigData.push(...txinSigDigest);
     
-    // Personalization: "ZcashTxHash_" + consensus_branch_id (4 bytes LE)
+    // Personalization for signature: "ZcashSigHash" (12 bytes) + branch_id (4 bytes LE)
+    // According to ZIP-244, signature digest uses "ZcashSigHash" not "ZcashTxHash_"
     const branchIdBytes = encodeUint32LE(tx.consensusBranchId);
-    const personalization = 'ZcashTxHash_' + String.fromCharCode(...branchIdBytes);
+    const personalizationPrefix = 'ZcashSigHash'; // 12 bytes
+    // Construct full 16-byte personalization by appending branch ID bytes as chars
+    const personalization = personalizationPrefix + String.fromCharCode(...branchIdBytes);
     
     console.log('[ZIP-244] Signing input', inputIndex, 'value:', utxoValue.toString());
+    console.log('[ZIP-244] Personalization:', Array.from(new TextEncoder().encode(personalizationPrefix)).concat(branchIdBytes).map(b => b.toString(16).padStart(2, '0')).join(''));
+    
     return blake2b256(new Uint8Array(sigData), personalization);
   }
   
