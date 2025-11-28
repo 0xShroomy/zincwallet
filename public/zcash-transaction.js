@@ -180,13 +180,16 @@ self.ZcashTransaction = (function() {
       }
     }
     
-    // Estimate size and fee
-    const baseSize = 10; // version + locktime
-    const inputSize = utxos.length * 148; // ~148 bytes per input
-    const outputSize = txOutputs.length * 34; // ~34 bytes per output
-    const changeOutputSize = 34;
-    const estimatedSize = baseSize + inputSize + outputSize + changeOutputSize;
-    const estimatedFee = BigInt(estimatedSize * feeRate);
+    // Calculate fee using ZIP-317 (NU6+)
+    // Fee = marginal_fee × max(grace_actions, logical_actions)
+    // marginal_fee = 5000 zatoshis
+    // grace_actions = 2
+    // logical_actions = max(inputs, outputs)
+    const marginalFee = 5000;
+    const graceActions = 2;
+    const outputCount = txOutputs.length + 1; // +1 for change output
+    const logicalActions = Math.max(utxos.length, outputCount);
+    const estimatedFee = BigInt(marginalFee * Math.max(graceActions, logicalActions));
     
     // Calculate change
     const changeAmount = totalInput - totalOutput - estimatedFee;
