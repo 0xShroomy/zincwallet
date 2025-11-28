@@ -3315,6 +3315,49 @@ self.addEventListener('install', () => {
   console.log('[Background] Extension installed!');
 });
 
+// On startup, sync wallet lock state with session storage
+// Session storage is cleared on restart, so we need to ensure UI shows unlock screen
+async function syncWalletStateOnStartup() {
+  try {
+    console.log('[Background] Checking session state on startup...');
+    
+    // Check if session has the private key (means truly unlocked)
+    const session = await chrome.storage.session.get(['cachedPrivateKey', 'walletUnlocked']);
+    const hasValidSession = session.walletUnlocked && session.cachedPrivateKey;
+    
+    // Get current wallet state from local storage
+    const stored = await chrome.storage.local.get(['wallet_state', 'wallets', 'encryptedSeed']);
+    const hasWallet = (stored.wallets && stored.wallets.length > 0) || !!stored.encryptedSeed;
+    
+    if (hasWallet && !hasValidSession) {
+      // Wallet exists but session is empty - mark as locked
+      console.log('[Background] Session cleared (restart detected), marking wallet as locked');
+      
+      const updatedState = {
+        ...(stored.wallet_state || {}),
+        isLocked: true,
+        isInitialized: true
+      };
+      
+      await chrome.storage.local.set({ wallet_state: updatedState });
+      
+      // Update in-memory state
+      walletState.isLocked = true;
+      
+      console.log('[Background] Wallet state synced - isLocked: true');
+    } else if (hasValidSession) {
+      console.log('[Background] Session valid, wallet remains unlocked');
+    } else {
+      console.log('[Background] No wallet found, nothing to sync');
+    }
+  } catch (error) {
+    console.error('[Background] Error syncing wallet state on startup:', error);
+  }
+}
+
+// Run sync on service worker activation
+syncWalletStateOnStartup();
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('[Background] Received message:', message);
   
