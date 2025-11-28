@@ -31,6 +31,28 @@ self.ZcashTransaction = (function() {
   }
   
   /**
+   * BLAKE2b-256 hash with personalization string (for ZIP-244)
+   * Uses the blake2b.js library loaded in background.js
+   */
+  function blake2b256(data, personalization) {
+    // blake2b.js exports blake2b function
+    // blake2b(data, key, outlen, config)
+    const config = personalization ? {
+      personalization: new TextEncoder().encode(personalization).slice(0, 16) // BLAKE2b personalization is 16 bytes max
+    } : undefined;
+    
+    const hash = self.blake2b(data, null, 32, config); // 32 bytes = 256 bits
+    return new Uint8Array(hash);
+  }
+  
+  /**
+   * BLAKE2b-256 of empty array with personalization (common in ZIP-244)
+   */
+  function blake2b256Empty(personalization) {
+    return blake2b256(new Uint8Array(0), personalization);
+  }
+  
+  /**
    * VarInt encoding for Bitcoin/Zcash
    */
   function encodeVarInt(n) {
@@ -223,92 +245,91 @@ self.ZcashTransaction = (function() {
   }
   
   /**
-   * Serialize transaction for signing using ZIP-243 (Overwinter/Sapling)
-   * This is completely different from Bitcoin signing!
+   * Serialize transaction for signing using ZIP-244 (v5 transactions)
+   * Uses BLAKE2b-256 with personalization strings
    */
-  async function serializeForSigning(tx, inputIndex, prevScript) {
-    const buffer = [];
+  function serializeForSigning(tx, inputIndex, prevScript) {
+    // ZIP-244: Build signature digest using BLAKE2b-256
     
-    // 1. nVersion + fOverwintered (v5)
-    buffer.push(...encodeUint32LE(tx.version)); // v5 with Overwinter bit
+    // S.1: header_digest
+    const headerData = [];
+    headerData.push(...encodeUint32LE(tx.version));
+    headerData.push(...encodeUint32LE(0x26A7270A)); // version_group_id
+    headerData.push(...encodeUint32LE(tx.consensusBranchId));
+    headerData.push(...encodeUint32LE(tx.lockTime));
+    headerData.push(...encodeUint32LE(tx.expiryHeight));
+    const headerDigest = blake2b256(new Uint8Array(headerData), 'ZTxIdHeadersHash');
     
-    // 2. nVersionGroupId (v5 = 0x26A7270A)
-    buffer.push(...encodeUint32LE(0x26A7270A));
-    
-    // 3. Consensus Branch ID (NU6.1 = 0x4DEC4DF0)
-    buffer.push(...encodeUint32LE(tx.consensusBranchId));
-    
-    // 4. hashPrevouts (double SHA256 of all input outpoints)
+    // S.2: transparent_digest components
+    // S.2a: prevouts_digest
     const prevoutsData = [];
     for (const input of tx.inputs) {
       const txidBytes = hexToBytes(input.txid);
       prevoutsData.push(...Array.from(txidBytes).reverse());
       prevoutsData.push(...encodeUint32LE(input.vout));
     }
-    console.log('[ZIP-244-v5] prevoutsData length:', prevoutsData.length);
-    const hashPrevouts = await hash256(new Uint8Array(prevoutsData));
-    console.log('[ZIP-244-v5] hashPrevouts:', bytesToHex(hashPrevouts));
-    buffer.push(...hashPrevouts);
+    const prevoutsDigest = blake2b256(new Uint8Array(prevoutsData), 'ZTxIdPrevoutHash');
     
-    // 5. hashSequence (double SHA256 of all input sequences)
+    // S.2b: sequence_digest
     const sequenceData = [];
     for (const input of tx.inputs) {
       sequenceData.push(...encodeUint32LE(input.sequence));
     }
-    const hashSequence = await hash256(new Uint8Array(sequenceData));
-    buffer.push(...hashSequence);
+    const sequenceDigest = blake2b256(new Uint8Array(sequenceData), 'ZTxIdSequencHash');
     
-    // 6. hashOutputs (double SHA256 of all outputs)
+    // S.2c: outputs_digest (for SIGHASH_ALL, hash all outputs)
     const outputsData = [];
     for (const output of tx.outputs) {
       outputsData.push(...encodeUint64LE(output.value));
       outputsData.push(...encodeVarInt(output.script.length));
       outputsData.push(...output.script);
     }
-    const hashOutputs = await hash256(new Uint8Array(outputsData));
-    buffer.push(...hashOutputs);
+    const outputsDigest = blake2b256(new Uint8Array(outputsData), 'ZTxIdOutputsHash');
     
-    // 7. hashJoinSplits (32 zero bytes for transparent-only)
-    buffer.push(...new Array(32).fill(0));
+    // S.2d: transparent_digest = hash(prevouts_digest || sequence_digest || outputs_digest)
+    const transparentData = [];
+    transparentData.push(...prevoutsDigest);
+    transparentData.push(...sequenceDigest);
+    transparentData.push(...outputsDigest);
+    const transparentDigest = blake2b256(new Uint8Array(transparentData), 'ZTxIdTranspaHash');
     
-    // 8. hashShieldedSpends (32 zero bytes for transparent-only)
-    buffer.push(...new Array(32).fill(0));
-    
-    // 9. hashShieldedOutputs (32 zero bytes for transparent-only)
-    buffer.push(...new Array(32).fill(0));
-    
-    // 10. nLockTime
-    buffer.push(...encodeUint32LE(tx.lockTime));
-    
-    // 11. nExpiryHeight - use from tx object
-    buffer.push(...encodeUint32LE(tx.expiryHeight));
-    
-    // 12. valueBalance (8 bytes, zero for transparent)
-    buffer.push(...encodeUint64LE(0n));
-    
-    // 13. nHashType (SIGHASH_ALL)
-    buffer.push(...encodeUint32LE(0x01));
-    
-    // 14. Input being signed: outpoint
+    // S.2g: txin_sig_digest (the input being signed)
     const input = tx.inputs[inputIndex];
+    const txinData = [];
+    // prevout
     const txidBytes = hexToBytes(input.txid);
-    buffer.push(...Array.from(txidBytes).reverse());
-    buffer.push(...encodeUint32LE(input.vout));
+    txinData.push(...Array.from(txidBytes).reverse());
+    txinData.push(...encodeUint32LE(input.vout));
+    // value
+    const utxoValue = BigInt(input.value || 0);
+    txinData.push(...encodeUint64LE(utxoValue));
+    // scriptPubKey
+    txinData.push(...encodeVarInt(prevScript.length));
+    txinData.push(...prevScript);
+    // nSequence
+    txinData.push(...encodeUint32LE(input.sequence));
+    const txinSigDigest = blake2b256(new Uint8Array(txinData), 'Zcash___TxInHash');
     
-    // 15. scriptCode of input (the prevScript)
-    buffer.push(...encodeVarInt(prevScript.length));
-    buffer.push(...prevScript);
+    // S.3: sapling_digest (empty for transparent-only)
+    const saplingDigest = blake2b256Empty('ZTxIdSaplingHash');
     
-    // 16. value of input (8 bytes)
-    // We need to get this from the UTXO!
-    const utxoValue = tx.inputs[inputIndex].value || 0n;
-    console.log('[ZIP-244-v5] Input value for signing:', utxoValue, 'type:', typeof utxoValue);
-    buffer.push(...encodeUint64LE(BigInt(utxoValue)));
+    // S.4: orchard_digest (empty for transparent-only)
+    const orchardDigest = blake2b256Empty('ZTxIdOrchardHash');
     
-    // 17. nSequence of input
-    buffer.push(...encodeUint32LE(input.sequence));
+    // Final signature digest: BLAKE2b-256 of all components
+    const sigData = [];
+    sigData.push(...headerDigest);
+    sigData.push(...transparentDigest);
+    sigData.push(...saplingDigest);
+    sigData.push(...orchardDigest);
+    sigData.push(...txinSigDigest);
     
-    return new Uint8Array(buffer);
+    // Personalization: "ZcashTxHash_" + consensus_branch_id (4 bytes LE)
+    const branchIdBytes = encodeUint32LE(tx.consensusBranchId);
+    const personalization = 'ZcashTxHash_' + String.fromCharCode(...branchIdBytes);
+    
+    console.log('[ZIP-244] Signing input', inputIndex, 'value:', utxoValue.toString());
+    return blake2b256(new Uint8Array(sigData), personalization);
   }
   
   /**
@@ -325,13 +346,10 @@ self.ZcashTransaction = (function() {
       // Get the scriptPubKey from the UTXO
       const prevScript = hexToBytes(utxo.scriptPubKey || '');
       
-      // Serialize for signing
-      const sigHash = await serializeForSigning(tx, i, prevScript);
+      // Get signature hash using ZIP-244 (already returns final BLAKE2b-256 hash)
+      const sigHash = serializeForSigning(tx, i, prevScript);
       
-      // Double SHA-256
-      const hash = await hash256(sigHash);
-      
-      console.log('[ZcashTx] Signing input', i, 'hash:', bytesToHex(hash));
+      console.log('[ZcashTx] Signing input', i, 'hash:', bytesToHex(sigHash));
       
       // REAL SIGNING using FixedZcashKeys
       if (!self.FixedZcashKeys) {
@@ -339,7 +357,7 @@ self.ZcashTransaction = (function() {
       }
       
       // Get DER signature from secp256k1
-      const derSignature = self.FixedZcashKeys.signHash(hash, privateKey);
+      const derSignature = self.FixedZcashKeys.signHash(sigHash, privateKey);
       
       // Append SIGHASH_ALL (0x01) to signature for Zcash
       const signatureWithHashType = new Uint8Array(derSignature.length + 1);
