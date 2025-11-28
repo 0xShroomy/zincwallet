@@ -191,6 +191,11 @@ export default function SettingsMenu({ onClose }: Props) {
             </div>
           </button>
         </div>
+
+        {/* Version */}
+        <div className="px-3 py-2 border-t border-zinc-700 mt-2">
+          <p className="text-xs text-zinc-500 text-center">Zync Wallet v1.0.0</p>
+        </div>
       </div>
     </>
   );
