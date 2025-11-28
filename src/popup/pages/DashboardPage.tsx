@@ -51,6 +51,7 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
   const [amountError, setAmountError] = useState<string | null>(null);
   const [sendStatus, setSendStatus] = useState<'idle' | 'sending' | 'success'>('idle');
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [showFeeSelection, setShowFeeSelection] = useState(false);
   const [feeSpeed, setFeeSpeed] = useState<'slow' | 'standard' | 'fast'>('standard');
   const [feeEstimates, setFeeEstimates] = useState<any>(null);
   const [estimatingFee, setEstimatingFee] = useState(false);
@@ -573,7 +574,7 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
   }
 
   async function confirmSendTransaction() {
-    setShowConfirmation(false);
+    // Keep confirmation modal open while sending (show loading state)
     setSendStatus('sending');
 
     try {
@@ -590,7 +591,11 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
       });
 
       if (result && result.success) {
-        setSendStatus('success');
+        // Close all modals on success
+        setShowConfirmation(false);
+        setShowFeeSelection(false);
+        setShowSend(false);
+        setSendStatus('idle');
         setSendAmount('');
         setSendTo('');
         setFeeEstimates(null);
@@ -598,14 +603,28 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
         setToast({ message: 'Transaction sent successfully!', type: 'success' });
         onUpdate();
       } else {
+        // Stay on confirmation modal but show error
         setSendStatus('idle');
-        setSendError(result?.error || 'Failed to send transaction');
-        setToast({ message: result?.error || 'Transaction failed', type: 'error' });
+        const errorMsg = result?.error || 'Failed to send transaction';
+        // Provide better error message for mempool conflict
+        if (errorMsg.includes('mempool-conflict')) {
+          setSendError('Your previous transaction is still pending. Please wait for it to confirm before sending another.');
+          setToast({ message: 'Previous transaction still pending', type: 'error' });
+        } else {
+          setSendError(errorMsg);
+          setToast({ message: errorMsg, type: 'error' });
+        }
       }
     } catch (error: any) {
       setSendStatus('idle');
-      setSendError(error?.message || 'Failed to send transaction');
-      setToast({ message: 'Transaction failed', type: 'error' });
+      const errorMsg = error?.message || 'Failed to send transaction';
+      if (errorMsg.includes('mempool-conflict')) {
+        setSendError('Your previous transaction is still pending. Please wait for it to confirm before sending another.');
+        setToast({ message: 'Previous transaction still pending', type: 'error' });
+      } else {
+        setSendError(errorMsg);
+        setToast({ message: 'Transaction failed', type: 'error' });
+      }
     }
   }
 
@@ -1018,113 +1037,36 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
             </div>
             <form className="flex flex-col flex-1 min-h-0" onSubmit={handleProceedToConfirmation}>
               <div className="overflow-y-auto px-4 py-3 space-y-3">
-                {/* Show address/amount inputs ONLY when fees are not yet estimated */}
-                {!feeEstimates ? (
-                  <>
-                    <div>
-                      <label className="block text-xs text-zinc-400 mb-1">Recipient address</label>
-                      <input
-                        className={`input text-sm ${addressError ? 'border-red-500 focus:border-red-500' : ''}`}
-                        value={sendTo}
-                        onChange={(e) => handleAddressChange(e.target.value)}
-                        placeholder="t1..."
-                      />
-                      {addressError && (
-                        <p className="text-xs text-red-400 mt-1">{addressError}</p>
-                      )}
-                    </div>
-                    <div>
-                      <label className="block text-xs text-zinc-400 mb-1">Amount (ZEC)</label>
-                      <input
-                        className={`input text-sm ${amountError ? 'border-red-500 focus:border-red-500' : ''}`}
-                        value={sendAmount}
-                        onChange={(e) => handleAmountChange(e.target.value)}
-                        placeholder="0.001"
-                      />
-                      {amountError && (
-                        <p className="text-xs text-red-400 mt-1">{amountError}</p>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  /* Fee Selection UI - hide address/amount inputs */
-                  <>
-                    <div>
-                      <label className="block text-xs text-zinc-400 mb-1.5">Transaction Speed</label>
-                      <div className="space-y-1.5">
-                        {(['slow', 'standard', 'fast'] as const).map((speed) => (
-                          <label
-                            key={speed}
-                            className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all ${
-                              feeSpeed === speed
-                                ? 'border-amber-500 bg-amber-500/10'
-                                : 'border-zinc-700 hover:border-zinc-600 bg-zinc-800/50'
-                            }`}
-                          >
-                            <div className="flex items-center gap-3">
-                              {/* Custom Radio Button */}
-                              <div className={`relative w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
-                                feeSpeed === speed ? 'border-amber-500' : 'border-zinc-500'
-                              }`}>
-                                {feeSpeed === speed && (
-                                  <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                                )}
-                                <input
-                                  type="radio"
-                                  name="feeSpeed"
-                                  value={speed}
-                                  checked={feeSpeed === speed}
-                                  onChange={() => setFeeSpeed(speed)}
-                                  className="absolute inset-0 opacity-0 cursor-pointer"
-                                />
-                              </div>
-                              <div>
-                                <div className="text-sm font-medium text-white capitalize">{speed}</div>
-                                <div className="text-xs text-zinc-400">{feeEstimates[speed].estimatedTime}</div>
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <div className="text-sm font-medium text-white">
-                                {(feeEstimates[speed].zatoshis / 100000000).toFixed(8)} ZEC
-                              </div>
-                              <div className="text-xs text-zinc-500">
-                                ${((feeEstimates[speed].zatoshis / 100000000) * (zecPriceUsd || 0)).toFixed(4)}
-                              </div>
-                            </div>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="bg-zinc-800 rounded-lg p-2.5 space-y-1.5">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-zinc-400">Amount</span>
-                        <span className="text-white">{sendAmount} ZEC</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-zinc-400">Network Fee</span>
-                        <span className="text-white">
-                          {(feeEstimates[feeSpeed].zatoshis / 100000000).toFixed(8)} ZEC
-                        </span>
-                      </div>
-                      <div className="border-t border-zinc-700 pt-1.5 flex justify-between font-medium text-sm">
-                        <span className="text-white">Total</span>
-                        <span className="text-white">
-                          {(Number(sendAmount) + (feeEstimates[feeSpeed].zatoshis / 100000000)).toFixed(8)} ZEC
-                        </span>
-                      </div>
-                    </div>
-                  </>
-                )}
+                <div>
+                  <label className="block text-xs text-zinc-400 mb-1">Recipient address</label>
+                  <input
+                    className={`input text-sm ${addressError ? 'border-red-500 focus:border-red-500' : ''}`}
+                    value={sendTo}
+                    onChange={(e) => handleAddressChange(e.target.value)}
+                    placeholder="t1..."
+                  />
+                  {addressError && (
+                    <p className="text-xs text-red-400 mt-1">{addressError}</p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-xs text-zinc-400 mb-1">Amount (ZEC)</label>
+                  <input
+                    className={`input text-sm ${amountError ? 'border-red-500 focus:border-red-500' : ''}`}
+                    value={sendAmount}
+                    onChange={(e) => handleAmountChange(e.target.value)}
+                    placeholder="0.001"
+                  />
+                  {amountError && (
+                    <p className="text-xs text-red-400 mt-1">{amountError}</p>
+                  )}
+                </div>
                 
                 {estimatingFee && (
                   <div className="text-center text-xs text-zinc-400">Calculating fees...</div>
                 )}
                 {sendError && (
                   <p className="text-xs text-red-500">{sendError}</p>
-                )}
-                {sendStatus === 'success' && (
-                  <p className="text-xs text-emerald-400">Transaction submitted (experimental stub).</p>
                 )}
               </div>
 
@@ -1133,26 +1075,20 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
                   type="button"
                   className="flex-1 btn btn-secondary py-2"
                   onClick={() => {
-                    if (feeEstimates) {
-                      // Go back to input mode
-                      setFeeEstimates(null);
-                      setSendError(null);
-                    } else {
-                      // Cancel entirely
-                      setShowSend(false);
-                      setSendStatus('idle');
-                      setSendError(null);
-                    }
+                    setShowSend(false);
+                    setSendStatus('idle');
+                    setSendError(null);
+                    setFeeEstimates(null);
                   }}
                 >
-                  {feeEstimates ? 'Back' : 'Cancel'}
+                  Cancel
                 </button>
                 <button
                   type="submit"
                   className="flex-1 btn btn-primary py-2"
                   disabled={sendStatus === 'sending' || estimatingFee || !!addressError || !!amountError}
                 >
-                  {estimatingFee ? 'Estimating...' : (feeEstimates ? 'Review Order' : 'Continue')}
+                  {estimatingFee ? 'Estimating...' : 'Continue'}
                 </button>
               </div>
             </form>
@@ -1168,57 +1104,154 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
             </div>
             
             <div className="overflow-y-auto px-4 py-3 space-y-3">
-              <div className="bg-amber-500/10 border border-amber-500/50 rounded-lg p-2.5">
-                <p className="text-xs text-amber-400">⚠️ Review carefully before confirming</p>
-              </div>
+              {!showFeeSelection ? (
+                <>
+                  <div className="bg-amber-500/10 border border-amber-500/50 rounded-lg p-2.5">
+                    <p className="text-xs text-amber-400">Review carefully before confirming</p>
+                  </div>
 
-              <div className="bg-zinc-800 rounded-lg p-3 space-y-2.5">
-                <div>
-                  <p className="text-xs text-zinc-500">Sending to</p>
-                  <p className="text-xs text-white font-mono break-all leading-tight mt-1">{sendTo}</p>
-                </div>
-                
-                <div className="border-t border-zinc-700 pt-2.5">
-                  <p className="text-xs text-zinc-500">Amount</p>
-                  <p className="text-base text-white font-semibold">{sendAmount} ZEC</p>
-                  <p className="text-xs text-zinc-500">≈ ${((Number(sendAmount) || 0) * (zecPriceUsd || 0)).toFixed(2)}</p>
-                </div>
-                
-                <div className="border-t border-zinc-700 pt-2.5">
-                  <p className="text-xs text-zinc-500">Network Fee ({feeSpeed})</p>
-                  <p className="text-sm text-white">{(feeEstimates[feeSpeed].zatoshis / 100000000).toFixed(8)} ZEC</p>
-                  <p className="text-xs text-zinc-500">≈ ${((feeEstimates[feeSpeed].zatoshis / 100000000) * (zecPriceUsd || 0)).toFixed(4)}</p>
-                </div>
-                
-                <div className="border-t border-zinc-700 pt-2.5">
-                  <p className="text-xs text-zinc-500">Total</p>
-                  <p className="text-lg text-amber-400 font-bold">{(Number(sendAmount) + (feeEstimates[feeSpeed].zatoshis / 100000000)).toFixed(8)} ZEC</p>
-                  <p className="text-xs text-zinc-500">≈ ${((Number(sendAmount) + (feeEstimates[feeSpeed].zatoshis / 100000000)) * (zecPriceUsd || 0)).toFixed(2)}</p>
-                </div>
-              </div>
+                  <div className="bg-zinc-800 rounded-lg p-3 space-y-2.5">
+                    <div>
+                      <p className="text-xs text-zinc-500">Sending to</p>
+                      <p className="text-xs text-white font-mono break-all leading-tight mt-1">{sendTo}</p>
+                    </div>
+                    
+                    <div className="border-t border-zinc-700 pt-2.5">
+                      <p className="text-xs text-zinc-500">Amount</p>
+                      <p className="text-base text-white font-semibold">{sendAmount} ZEC</p>
+                      <p className="text-xs text-zinc-500">≈ ${((Number(sendAmount) || 0) * (zecPriceUsd || 0)).toFixed(2)}</p>
+                    </div>
+                    
+                    <div className="border-t border-zinc-700 pt-2.5">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-zinc-500">Network Fee ({feeSpeed})</p>
+                        <button
+                          type="button"
+                          onClick={() => setShowFeeSelection(true)}
+                          className="text-xs text-amber-500 hover:text-amber-400 font-medium"
+                        >
+                          Edit Fee
+                        </button>
+                      </div>
+                      <p className="text-sm text-white">{(feeEstimates[feeSpeed].zatoshis / 100000000).toFixed(8)} ZEC</p>
+                      <p className="text-xs text-zinc-500">≈ ${((feeEstimates[feeSpeed].zatoshis / 100000000) * (zecPriceUsd || 0)).toFixed(4)}</p>
+                    </div>
+                    
+                    <div className="border-t border-zinc-700 pt-2.5">
+                      <p className="text-xs text-zinc-500">Total</p>
+                      <p className="text-lg text-amber-400 font-bold">{(Number(sendAmount) + (feeEstimates[feeSpeed].zatoshis / 100000000)).toFixed(8)} ZEC</p>
+                      <p className="text-xs text-zinc-500">≈ ${((Number(sendAmount) + (feeEstimates[feeSpeed].zatoshis / 100000000)) * (zecPriceUsd || 0)).toFixed(2)}</p>
+                    </div>
+                  </div>
 
-              <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-2.5">
-                <p className="text-xs text-zinc-400"><span className="text-white font-medium">Note:</span> This transaction cannot be reversed once confirmed.</p>
-              </div>
+                  <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-2.5">
+                    <p className="text-xs text-zinc-400"><span className="text-white font-medium">Note:</span> This transaction cannot be reversed once confirmed.</p>
+                  </div>
+
+                  {sendError && (
+                    <div className="bg-red-500/10 border border-red-500/50 rounded-lg p-2.5">
+                      <p className="text-xs text-red-400">{sendError}</p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                /* Fee Selection View */
+                <>
+                  <div>
+                    <label className="block text-xs text-zinc-400 mb-1.5">Transaction Speed</label>
+                    <div className="space-y-1.5">
+                      {(['slow', 'standard', 'fast'] as const).map((speed) => (
+                        <label
+                          key={speed}
+                          className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all ${
+                            feeSpeed === speed
+                              ? 'border-amber-500 bg-amber-500/10'
+                              : 'border-zinc-700 hover:border-zinc-600 bg-zinc-800/50'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`relative w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
+                              feeSpeed === speed ? 'border-amber-500' : 'border-zinc-500'
+                            }`}>
+                              {feeSpeed === speed && (
+                                <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                              )}
+                              <input
+                                type="radio"
+                                name="feeSpeed"
+                                value={speed}
+                                checked={feeSpeed === speed}
+                                onChange={() => setFeeSpeed(speed)}
+                                className="absolute inset-0 opacity-0 cursor-pointer"
+                              />
+                            </div>
+                            <div>
+                              <div className="text-sm font-medium text-white capitalize">{speed}</div>
+                              <div className="text-xs text-zinc-400">{feeEstimates[speed].estimatedTime}</div>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-sm font-medium text-white">
+                              {(feeEstimates[speed].zatoshis / 100000000).toFixed(8)} ZEC
+                            </div>
+                            <div className="text-xs text-zinc-500">
+                              ${((feeEstimates[speed].zatoshis / 100000000) * (zecPriceUsd || 0)).toFixed(4)}
+                            </div>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="bg-zinc-800 rounded-lg p-2.5 space-y-1.5">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-zinc-400">Amount</span>
+                      <span className="text-white">{sendAmount} ZEC</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-zinc-400">Network Fee</span>
+                      <span className="text-white">
+                        {(feeEstimates[feeSpeed].zatoshis / 100000000).toFixed(8)} ZEC
+                      </span>
+                    </div>
+                    <div className="border-t border-zinc-700 pt-1.5 flex justify-between font-medium text-sm">
+                      <span className="text-white">Total</span>
+                      <span className="text-white">
+                        {(Number(sendAmount) + (feeEstimates[feeSpeed].zatoshis / 100000000)).toFixed(8)} ZEC
+                      </span>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="p-4 border-t border-zinc-700 flex gap-2">
               <button
                 type="button"
-                onClick={() => setShowConfirmation(false)}
+                onClick={() => {
+                  if (showFeeSelection) {
+                    setShowFeeSelection(false);
+                  } else {
+                    setShowConfirmation(false);
+                    setShowFeeSelection(false);
+                    setSendError(null);
+                  }
+                }}
                 className="flex-1 btn btn-secondary py-2"
                 disabled={sendStatus === 'sending'}
               >
-                Back
+                {showFeeSelection ? 'Done' : 'Back'}
               </button>
-              <button
-                type="button"
-                onClick={confirmSendTransaction}
-                className="flex-1 bg-amber-600 hover:bg-amber-700 text-white font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
-                disabled={sendStatus === 'sending'}
-              >
-                {sendStatus === 'sending' ? 'Sending...' : 'Confirm & Send'}
-              </button>
+              {!showFeeSelection && (
+                <button
+                  type="button"
+                  onClick={confirmSendTransaction}
+                  className="flex-1 bg-amber-600 hover:bg-amber-700 text-white font-medium py-2 px-4 rounded-lg transition-colors disabled:opacity-50"
+                  disabled={sendStatus === 'sending'}
+                >
+                  {sendStatus === 'sending' ? 'Sending...' : 'Confirm & Send'}
+                </button>
+              )}
             </div>
           </div>
         </div>
