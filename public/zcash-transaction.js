@@ -39,13 +39,15 @@ self.ZcashTransaction = (function() {
     // Personalization must be exactly 16 bytes or undefined
     let personal = undefined;
     if (personalization) {
-      if (typeof personalization === 'string') {
+      if (personalization instanceof Uint8Array) {
+        // Already binary - use directly
+        personal = new Uint8Array(16);
+        personal.set(personalization.slice(0, 16));
+      } else if (typeof personalization === 'string') {
+        // String - encode to bytes (only works for ASCII)
         const encoded = new TextEncoder().encode(personalization);
         personal = new Uint8Array(16);
-        personal.set(encoded.slice(0, 16)); 
-      } else if (personalization instanceof Uint8Array || Array.isArray(personalization)) {
-        personal = new Uint8Array(16);
-        personal.set(new Uint8Array(personalization).slice(0, 16));
+        personal.set(encoded.slice(0, 16));
       }
     }
     
@@ -238,7 +240,7 @@ self.ZcashTransaction = (function() {
     
     return {
       version: 4 | (1 << 31), // Zcash v4 with Overwinter bit
-      consensusBranchId: 0x4dec4df0, // NU6.1 consensus branch (active since block 3146400)
+      consensusBranchId: 0x4dec4df0, // NU6.1 consensus branch (current mainnet)
       inputs: utxos.map(utxo => ({
         txid: utxo.txid,
         vout: utxo.vout,
@@ -268,6 +270,8 @@ self.ZcashTransaction = (function() {
       prevoutsData.push(...encodeUint32LE(input.vout));
     }
     const hashPrevouts = blake2b256(new Uint8Array(prevoutsData), 'ZcashPrevoutHash');
+    console.log('[ZIP-243] prevoutsData:', bytesToHex(new Uint8Array(prevoutsData)));
+    console.log('[ZIP-243] hashPrevouts:', bytesToHex(hashPrevouts));
     
     // 4. hashSequence - BLAKE2b-256 with personalization 'ZcashSequencHash'
     const sequenceData = [];
@@ -275,6 +279,7 @@ self.ZcashTransaction = (function() {
       sequenceData.push(...encodeUint32LE(input.sequence));
     }
     const hashSequence = blake2b256(new Uint8Array(sequenceData), 'ZcashSequencHash');
+    console.log('[ZIP-243] hashSequence:', bytesToHex(hashSequence));
     
     // 5. hashOutputs - BLAKE2b-256 with personalization 'ZcashOutputsHash'
     const outputsData = [];
@@ -284,6 +289,8 @@ self.ZcashTransaction = (function() {
       outputsData.push(...output.script);
     }
     const hashOutputs = blake2b256(new Uint8Array(outputsData), 'ZcashOutputsHash');
+    console.log('[ZIP-243] outputsData:', bytesToHex(new Uint8Array(outputsData)));
+    console.log('[ZIP-243] hashOutputs:', bytesToHex(hashOutputs));
     
     // 6-8. Empty hashes for JoinSplits and Shielded (transparent-only)
     const hashJoinSplits = new Uint8Array(32).fill(0);
@@ -326,6 +333,7 @@ self.ZcashTransaction = (function() {
     sigData.push(...encodeUint32LE(input.vout));
     
     // 14. scriptCode
+    console.log('[ZIP-243] prevScript (scriptCode):', bytesToHex(prevScript));
     sigData.push(...encodeVarInt(prevScript.length));
     sigData.push(...prevScript);
     
@@ -337,15 +345,18 @@ self.ZcashTransaction = (function() {
     sigData.push(...encodeUint32LE(input.sequence));
     
     console.log('[ZIP-243] Signing input', inputIndex, 'value:', utxoValue.toString());
+    console.log('[ZIP-243] Full preimage length:', sigData.length, 'bytes');
+    console.log('[ZIP-243] Full preimage:', bytesToHex(new Uint8Array(sigData)));
     
     // Final signature hash: BLAKE2b-256 with personalization "ZcashSigHash" + consensusBranchId
-    // "ZcashSigHash" is 12 bytes, BranchId is 4 bytes. Total 16 bytes.
-    // MUST construct as bytes, because BranchId bytes can be > 127 and String.fromCharCode + TextEncoder will corrupt them!
+    // MUST use Uint8Array because consensusBranchId bytes can be > 127 (e.g. 0xf0 in 0x4dec4df0)
+    // String.fromCharCode + TextEncoder corrupts bytes > 127 due to UTF-8 encoding
     const personalization = new Uint8Array(16);
-    const prefix = new TextEncoder().encode('ZcashSigHash');
+    const prefix = new TextEncoder().encode('ZcashSigHash'); // 12 bytes ASCII
     personalization.set(prefix);
-    personalization.set(encodeUint32LE(tx.consensusBranchId), 12);
+    personalization.set(encodeUint32LE(tx.consensusBranchId), 12); // 4 bytes LE at offset 12
     
+    console.log('[ZIP-243] Personalization hex:', bytesToHex(personalization));
     return blake2b256(new Uint8Array(sigData), personalization);
   }
   
@@ -356,6 +367,12 @@ self.ZcashTransaction = (function() {
     // Simple base58 alphabet
     const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
     
+    // Count leading '1's (they represent 0x00 bytes)
+    let leadingZeros = 0;
+    for (let i = 0; i < address.length && address[i] === '1'; i++) {
+      leadingZeros++;
+    }
+    
     // Decode base58
     let decoded = BigInt(0);
     for (let i = 0; i < address.length; i++) {
@@ -365,18 +382,27 @@ self.ZcashTransaction = (function() {
       decoded = decoded * 58n + BigInt(value);
     }
     
-    // Convert to bytes
-    const hex = decoded.toString(16);
+    // Convert to bytes with proper padding
+    let hex = decoded.toString(16);
+    if (hex.length % 2 !== 0) hex = '0' + hex; // Ensure even length
+    
     const bytes = [];
+    // Add leading zero bytes
+    for (let i = 0; i < leadingZeros; i++) {
+      bytes.push(0);
+    }
+    // Add decoded bytes
     for (let i = 0; i < hex.length; i += 2) {
       bytes.push(parseInt(hex.substr(i, 2), 16));
     }
     
-    // Zcash t1 addresses: 2 version bytes + 20 pubkey hash bytes + 4 checksum bytes = 26 bytes
-    // Extract the 20-byte pubkey hash (skip 2 version bytes, take 20 bytes)
-    const pubkeyHash = new Uint8Array(bytes.slice(-24, -4)); // Skip checksum (last 4), take 20 bytes before that
+    console.log('[ZcashTx] Base58 decoded to', bytes.length, 'bytes:', bytesToHex(new Uint8Array(bytes)));
     
-    console.log('[ZcashTx] Decoded address, pubkey hash length:', pubkeyHash.length);
+    // Zcash t1 addresses: 2 version bytes + 20 pubkey hash bytes + 4 checksum bytes = 26 bytes
+    // Extract the 20-byte pubkey hash (skip 2 version bytes, take 20 bytes before checksum)
+    const pubkeyHash = new Uint8Array(bytes.slice(2, 22)); // Skip 2 version bytes, take next 20 bytes
+    
+    console.log('[ZcashTx] Decoded address, pubkey hash:', bytesToHex(pubkeyHash));
     
     // Build P2PKH script: OP_DUP OP_HASH160 <20-byte-hash> OP_EQUALVERIFY OP_CHECKSIG
     const script = new Uint8Array(25);

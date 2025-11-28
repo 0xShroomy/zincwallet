@@ -1,0 +1,130 @@
+Zcash
+Explore Zcash, a privacy-focused blockchain using zero-knowledge proofs. Build confidential decentralized applications using its RPC gateway.
+
+The Zcash RPC documentation provides developers with a comprehensive guide to interact programmatically with the Zcash blockchain. Zcash is a privacy-focused blockchain that uses zero-knowledge proofs (zk-SNARKs) to provide enhanced transaction privacy while maintaining a decentralized network. The documentation includes API endpoints for querying blockchain data, submitting transactions, and managing wallets with shielded addresses for privacy. Zcash is ideal for developers building confidential decentralized applications (dApps) and decentralized finance (DeFi) projects requiring privacy.
+
+– Related: 📚 Supported Blockchains • 🌐 RPC Nodes → Zcash • 🔗 Official Zcash Website
+
+
+RPC Gateway for Zcash blockchain
+Zcash Logo
+Zcash RPC networks
+▶️ Run in Postman
+🚀 Get Started
+⭐
+Zcash Mainnet
+🕵️ Explorer
+↳ JSON-RPC
+https://zcash-mainnet.gateway.tatum.io
+🔍 Status
+↳ REST API
+https://zcash-mainnet.gateway.tatum.io/rest
+🔍 Status
+⭐
+Zcash Testnet
+🕵️ Explorer
+↳ JSON-RPC
+https://zcash-testnet.gateway.tatum.io
+🔍 Status
+↳ REST API
+https://zcash-testnet.gateway.tatum.io/rest
+🔍 Status
+Connect to Zcash and Fetch the Latest Block
+This widget lets you instantly query the latest block height (or equivalent) for Zcash using a chain-specific RPC method like eth_blockNumber, getblockcount, or getBlockHeight. Useful for connectivity checks, uptime monitoring, or API testing.
+
+Blockchain
+Zcash
+Zcash
+
+Network Interface
+Mainnet JSON-RPC
+
+cURL
+Node
+Python
+Ruby
+Go
+curl --request POST \
+--url 'https://zcash-mainnet.gateway.tatum.io/' \
+--header 'accept: application/json' \
+--header 'content-type: application/json' \
+--header 'x-api-key: YOUR_API_KEY' \
+--data '{"id":1,"jsonrpc":"2.0","method":"getblockcount"}'
+
+API Key
+Enter your Tatum API key
+
+Try now!
+No API Key? Create one in the Tatum Dashboard for free.
+Get API key
+For free. No commitment.
+Don't have an API key?
+Sign up to Dashboard and create your API keys today.
+Get higher limits and use debugging tools.
+
+Retrieve Zcash Node Status or Client Version via RPC
+Use this pre-configured request to get version or status information for your connected Zcash node. Whether it's web3_clientVersion, getblockchaininfo, or chain-specific endpoints, the method is optimized for each supported blockchain.
+
+Blockchain
+Zcash
+Zcash
+
+Network Interface
+Mainnet JSON-RPC
+
+cURL
+Node
+Python
+Ruby
+Go
+curl --request POST \
+--url 'https://zcash-mainnet.gateway.tatum.io/' \
+--header 'accept: application/json' \
+--header 'content-type: application/json' \
+--header 'x-api-key: YOUR_API_KEY' \
+--data '{"id":1,"jsonrpc":"2.0","method":"getblockchaininfo"}'
+
+API Key
+Enter your Tatum API key
+
+Try now!
+No API Key? Create one in the Tatum Dashboard for free.
+Test Zcash RPC Methods in Postman
+Explore and test Zcash blockchain methods instantly using our pre-configured Postman collection. Perfect for developers who want to experiment with Zcash RPC endpoints, validate API responses, or integrate Zcash into their applications.
+
+How to use the Zcash Postman Collection
+Get your API key: Visit Tatum Dashboard to obtain your free API key
+Import the collection: Click the "Run in Postman" button below to import the Zcash collection
+Configure your environment: Update the gateway-api-key variable in the Tatum Gateway environment
+Start testing: Execute any Zcash RPC method and see real-time responses
+▶️ Run in Postman
+Available Zcash interfaces
+Zcash - JSON-RPC
+validateaddress
+getmempoolinfo
+sendrawtransaction
+getmempoolancestors
+estimatesmartfee
+getmempooldescendants
+getchaintips
+getrawtransaction
+gettxout
+getblockchaininfo
+getblockcount
+getblockheader
+getmempoolentry
+getbestblockhash
+verifytxoutproof
+decodescript
+getdifficulty
+decoderawtransaction
+getblock
+getblockstats
+verifymessage
+createrawtransaction
+getrawmempool
+gettxoutproof
+getblockhash
+
+
+

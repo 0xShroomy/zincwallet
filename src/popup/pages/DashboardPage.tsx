@@ -1018,32 +1018,36 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
             </div>
             <form className="flex flex-col flex-1 min-h-0" onSubmit={handleProceedToConfirmation}>
               <div className="overflow-y-auto px-4 py-3 space-y-3">
-                <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Recipient address</label>
-                  <input
-                    className={`input text-sm ${addressError ? 'border-red-500 focus:border-red-500' : ''}`}
-                    value={sendTo}
-                    onChange={(e) => handleAddressChange(e.target.value)}
-                    placeholder="t1..."
-                  />
-                  {addressError && (
-                    <p className="text-xs text-red-400 mt-1">{addressError}</p>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-xs text-zinc-400 mb-1">Amount (ZEC)</label>
-                  <input
-                    className={`input text-sm ${amountError ? 'border-red-500 focus:border-red-500' : ''}`}
-                    value={sendAmount}
-                    onChange={(e) => handleAmountChange(e.target.value)}
-                    placeholder="0.001"
-                  />
-                  {amountError && (
-                    <p className="text-xs text-red-400 mt-1">{amountError}</p>
-                  )}
-                </div>
-                
-                {feeEstimates && (
+                {/* Show address/amount inputs ONLY when fees are not yet estimated */}
+                {!feeEstimates ? (
+                  <>
+                    <div>
+                      <label className="block text-xs text-zinc-400 mb-1">Recipient address</label>
+                      <input
+                        className={`input text-sm ${addressError ? 'border-red-500 focus:border-red-500' : ''}`}
+                        value={sendTo}
+                        onChange={(e) => handleAddressChange(e.target.value)}
+                        placeholder="t1..."
+                      />
+                      {addressError && (
+                        <p className="text-xs text-red-400 mt-1">{addressError}</p>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-xs text-zinc-400 mb-1">Amount (ZEC)</label>
+                      <input
+                        className={`input text-sm ${amountError ? 'border-red-500 focus:border-red-500' : ''}`}
+                        value={sendAmount}
+                        onChange={(e) => handleAmountChange(e.target.value)}
+                        placeholder="0.001"
+                      />
+                      {amountError && (
+                        <p className="text-xs text-red-400 mt-1">{amountError}</p>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  /* Fee Selection UI - hide address/amount inputs */
                   <>
                     <div>
                       <label className="block text-xs text-zinc-400 mb-1.5">Transaction Speed</label>
@@ -1051,21 +1055,29 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
                         {(['slow', 'standard', 'fast'] as const).map((speed) => (
                           <label
                             key={speed}
-                            className={`flex items-center justify-between p-2 rounded-lg border cursor-pointer transition-colors ${
+                            className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all ${
                               feeSpeed === speed
                                 ? 'border-amber-500 bg-amber-500/10'
-                                : 'border-zinc-700 hover:border-zinc-600'
+                                : 'border-zinc-700 hover:border-zinc-600 bg-zinc-800/50'
                             }`}
                           >
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="radio"
-                                name="feeSpeed"
-                                value={speed}
-                                checked={feeSpeed === speed}
-                                onChange={() => setFeeSpeed(speed)}
-                                className="text-amber-500 focus:ring-amber-500"
-                              />
+                            <div className="flex items-center gap-3">
+                              {/* Custom Radio Button */}
+                              <div className={`relative w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
+                                feeSpeed === speed ? 'border-amber-500' : 'border-zinc-500'
+                              }`}>
+                                {feeSpeed === speed && (
+                                  <div className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                                )}
+                                <input
+                                  type="radio"
+                                  name="feeSpeed"
+                                  value={speed}
+                                  checked={feeSpeed === speed}
+                                  onChange={() => setFeeSpeed(speed)}
+                                  className="absolute inset-0 opacity-0 cursor-pointer"
+                                />
+                              </div>
                               <div>
                                 <div className="text-sm font-medium text-white capitalize">{speed}</div>
                                 <div className="text-xs text-zinc-400">{feeEstimates[speed].estimatedTime}</div>
@@ -1121,19 +1133,26 @@ export default function DashboardPage({ walletState, onUpdate }: Props) {
                   type="button"
                   className="flex-1 btn btn-secondary py-2"
                   onClick={() => {
-                    setShowSend(false);
-                    setSendStatus('idle');
-                    setSendError(null);
+                    if (feeEstimates) {
+                      // Go back to input mode
+                      setFeeEstimates(null);
+                      setSendError(null);
+                    } else {
+                      // Cancel entirely
+                      setShowSend(false);
+                      setSendStatus('idle');
+                      setSendError(null);
+                    }
                   }}
                 >
-                  Cancel
+                  {feeEstimates ? 'Back' : 'Cancel'}
                 </button>
                 <button
                   type="submit"
                   className="flex-1 btn btn-primary py-2"
                   disabled={sendStatus === 'sending' || estimatingFee || !!addressError || !!amountError}
                 >
-                  {estimatingFee ? 'Estimating...' : 'Continue'}
+                  {estimatingFee ? 'Estimating...' : (feeEstimates ? 'Review Order' : 'Continue')}
                 </button>
               </div>
             </form>

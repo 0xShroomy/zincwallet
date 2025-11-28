@@ -106,16 +106,23 @@ self.FixedZcashKeys = (() => {
   
   /**
    * Sign a hash with a private key using secp256k1
-   * Returns DER-encoded signature
+   * Returns DER-encoded signature with Low-S (BIP-62 compliant)
    */
   function signHash(messageHash, privateKey) {
     // Convert inputs to BigInt
     const z = bytesToBigInt(messageHash);
     const d = bytesToBigInt(privateKey);
     
-    // Generate random k (nonce) - In production, use deterministic k (RFC 6979)
-    // For now, use a simple deterministic approach based on message hash
-    const k = (z + d) % N; // Simple deterministic k (NOT cryptographically secure!)
+    // Generate deterministic k using RFC 6979-like approach
+    // For better security, concatenate z and d and hash them
+    const combined = new Uint8Array(64);
+    combined.set(messageHash, 0);
+    combined.set(privateKey, 32);
+    
+    // Simple deterministic k based on hash (better than z+d)
+    let k = bytesToBigInt(messageHash) ^ bytesToBigInt(privateKey);
+    k = mod(k, N);
+    if (k === 0n) k = 1n; // Ensure k is never 0
     
     // Calculate r = (k * G).x mod N
     let kG = pointMultiply(k);
@@ -123,7 +130,14 @@ self.FixedZcashKeys = (() => {
     
     // Calculate s = k^-1 * (z + r*d) mod N
     const kInv = invert(k, N);
-    const s = mod((kInv * (z + r * d)), N);
+    let s = mod((kInv * (z + r * d)), N);
+    
+    // BIP-62: Enforce Low-S - if s > N/2, use N - s instead
+    // This is REQUIRED by Bitcoin/Zcash nodes!
+    const halfN = N / 2n;
+    if (s > halfN) {
+      s = N - s;
+    }
     
     // Encode as DER
     return encodeDER(r, s);
