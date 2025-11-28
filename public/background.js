@@ -137,11 +137,65 @@ const FEE_RATES = {
   fast: 5       // ~2-5 minutes, priority
 };
 
+// ===========================================================================
+// PENDING TRANSACTION TRACKING (for rapid back-to-back sends)
+// ===========================================================================
+
+/**
+ * Store a pending transaction after broadcast
+ * This allows us to use unconfirmed change outputs for subsequent transactions
+ */
+async function storePendingTransaction(pendingTx) {
+  const stored = await chrome.storage.local.get(['pendingTransactions']);
+  const pendingTxs = stored.pendingTransactions || [];
+  
+  // Add new pending transaction
+  pendingTxs.push({
+    ...pendingTx,
+    timestamp: Date.now()
+  });
+  
+  // Clean up old pending transactions (older than 10 minutes)
+  const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
+  const cleanedTxs = pendingTxs.filter(tx => tx.timestamp > tenMinutesAgo);
+  
+  await chrome.storage.local.set({ pendingTransactions: cleanedTxs });
+  console.log('[Background] Stored pending transaction:', pendingTx.txid);
+  console.log('[Background] Total pending transactions:', cleanedTxs.length);
+}
+
+/**
+ * Get pending transactions for an address
+ */
+async function getPendingTransactions(address) {
+  const stored = await chrome.storage.local.get(['pendingTransactions']);
+  const pendingTxs = stored.pendingTransactions || [];
+  
+  // Clean up old pending transactions (older than 10 minutes)
+  const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
+  const validTxs = pendingTxs.filter(tx => tx.timestamp > tenMinutesAgo && tx.address === address);
+  
+  return validTxs;
+}
+
+/**
+ * Clear a pending transaction (when confirmed or failed)
+ * Reserved for future use when checking transaction confirmations
+ */
+async function _clearPendingTransaction(txid) {
+  const stored = await chrome.storage.local.get(['pendingTransactions']);
+  const pendingTxs = stored.pendingTransactions || [];
+  
+  const filtered = pendingTxs.filter(tx => tx.txid !== txid);
+  await chrome.storage.local.set({ pendingTransactions: filtered });
+  console.log('[Background] Cleared pending transaction:', txid);
+}
+
 /**
  * Calculate transaction fee based on ZIP-317 (NU6+)
  * Fee = marginal_fee × max(grace_actions, logical_actions)
  */
-function calculateTransactionFee(inputCount, outputCount, feeRate) {
+function calculateTransactionFee(inputCount, outputCount, _feeRate) {
   // ZIP-317: Proportional Transfer Fee Mechanism (NU6+)
   // marginal_fee = 5000 zatoshis per logical action
   // grace_actions = 2 (no fee for first 2 actions)
@@ -2182,7 +2236,41 @@ async function handleEstimateFee(data) {
     }
     
     // Get UTXOs to calculate input count
-    const utxos = await self.LightwalletdClient.getUtxos(walletState.address);
+    let utxos = await self.LightwalletdClient.getUtxos(walletState.address);
+    
+    // Check for pending transactions and adjust UTXOs accordingly
+    const pendingTxs = await getPendingTransactions(walletState.address);
+    if (pendingTxs.length > 0) {
+      console.log('[Background] Fee estimate: Found', pendingTxs.length, 'pending tx(s), adjusting UTXOs...');
+      
+      // Collect all spent UTXOs from pending transactions
+      const spentUtxoKeys = new Set();
+      for (const ptx of pendingTxs) {
+        for (const spent of ptx.spentUtxos || []) {
+          spentUtxoKeys.add(`${spent.txid}:${spent.vout}`);
+        }
+      }
+      
+      // Filter out already-spent UTXOs
+      utxos = utxos.filter(u => !spentUtxoKeys.has(`${u.txid}:${u.vout}`));
+      
+      // Add pending change outputs as available UTXOs
+      // BUT only if they haven't been spent by another pending transaction!
+      for (const ptx of pendingTxs) {
+        if (ptx.changeValue > 0) {
+          const pendingUtxoKey = `${ptx.txid}:${ptx.changeVout}`;
+          if (spentUtxoKeys.has(pendingUtxoKey)) {
+            continue; // Skip - already spent by another pending tx
+          }
+          utxos.push({
+            txid: ptx.txid,
+            vout: ptx.changeVout,
+            value: ptx.changeValue,
+            isPending: true
+          });
+        }
+      }
+    }
     
     if (!utxos || utxos.length === 0) {
       throw new Error('No UTXOs available');
@@ -2271,13 +2359,56 @@ async function handleSendZec(data) {
     
     // Get UTXOs for the wallet address
     console.log('[Background] Fetching UTXOs for:', walletState.address);
-    const utxos = await self.LightwalletdClient.getUtxos(walletState.address);
+    let utxos = await self.LightwalletdClient.getUtxos(walletState.address);
+    
+    // Check for pending transactions and adjust UTXOs accordingly
+    const pendingTxs = await getPendingTransactions(walletState.address);
+    if (pendingTxs.length > 0) {
+      console.log('[Background] Found', pendingTxs.length, 'pending transaction(s), adjusting UTXOs...');
+      
+      // Collect all spent UTXOs from pending transactions
+      const spentUtxoKeys = new Set();
+      for (const ptx of pendingTxs) {
+        for (const spent of ptx.spentUtxos || []) {
+          spentUtxoKeys.add(`${spent.txid}:${spent.vout}`);
+        }
+      }
+      
+      // Filter out already-spent UTXOs from API response
+      const originalCount = utxos.length;
+      utxos = utxos.filter(u => !spentUtxoKeys.has(`${u.txid}:${u.vout}`));
+      console.log('[Background] Filtered out', originalCount - utxos.length, 'spent UTXOs');
+      
+      // Add pending change outputs as available UTXOs
+      // BUT only if they haven't been spent by another pending transaction!
+      for (const ptx of pendingTxs) {
+        // Only add if there's a valid change output
+        if (ptx.changeValue > 0) {
+          // Check if this pending UTXO was spent by another pending transaction
+          const pendingUtxoKey = `${ptx.txid}:${ptx.changeVout}`;
+          if (spentUtxoKeys.has(pendingUtxoKey)) {
+            console.log('[Background] Skipping already-spent pending UTXO:', ptx.txid, 'vout:', ptx.changeVout);
+            continue;
+          }
+          
+          utxos.push({
+            txid: ptx.txid,
+            vout: ptx.changeVout,
+            value: ptx.changeValue,
+            address: ptx.address, // CRITICAL: Include address for scriptPubKey building
+            scriptPubKey: '', // Will be rebuilt from address during signing
+            isPending: true // Mark as pending for debugging
+          });
+          console.log('[Background] Added pending UTXO:', ptx.txid, 'vout:', ptx.changeVout, 'value:', ptx.changeValue, 'address:', ptx.address);
+        }
+      }
+    }
     
     if (!utxos || utxos.length === 0) {
       throw new Error('No confirmed balance available. Please wait for your funds to be confirmed.');
     }
     
-    console.log('[Background] Found', utxos.length, 'UTXOs');
+    console.log('[Background] Total available UTXOs:', utxos.length);
     
     // Calculate amount in zatoshis
     const amountZatoshis = Math.round(amountZec * 100000000);
@@ -2340,6 +2471,29 @@ async function handleSendZec(data) {
     const txid = await self.LightwalletdClient.broadcastTransaction(txHex);
     
     console.log('[Background] Transaction broadcast! TXID:', txid);
+    
+    // Store pending transaction for rapid back-to-back sends
+    // This allows us to spend the change output before it's confirmed
+    const changeOutput = tx.outputs.length > 1 ? tx.outputs[tx.outputs.length - 1] : null;
+    if (changeOutput && changeOutput.value > 0n) {
+      const changeValue = Number(changeOutput.value);
+      const spentUtxos = selectedUtxos.map(u => ({ txid: u.txid, vout: u.vout }));
+      
+      await storePendingTransaction({
+        txid: txid,
+        address: walletState.address,
+        changeValue: changeValue,
+        changeVout: tx.outputs.length - 1, // Change is always last output
+        spentUtxos: spentUtxos // Track which UTXOs were spent
+      });
+      
+      console.log('[Background] Stored pending tx for rapid sends:', {
+        txid,
+        changeValue,
+        changeVout: tx.outputs.length - 1,
+        spentCount: spentUtxos.length
+      });
+    }
     
     // Store success notification
     await chrome.storage.local.set({
