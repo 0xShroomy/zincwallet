@@ -285,13 +285,16 @@ self.ZcashTransaction = (function() {
     
     // S.2d: scriptpubkeys_sig_digest (hash of all input scriptPubKeys)
     // For SIGHASH_ALL, include ALL input scriptPubKeys
+    // For the input being signed, use prevScript. For others, get from UTXO.
     const scriptPubKeysData = [];
     for (let i = 0; i < tx.inputs.length; i++) {
-      const utxo = utxos[i];
-      const scriptPubKey = hexToBytes(utxo.scriptPubKey || '');
+      // For the input we're signing, use prevScript; for others use UTXO scriptPubKey
+      const scriptPubKey = (i === inputIndex) ? prevScript : hexToBytes(utxos[i].scriptPubKey || '');
+      console.log('[ZIP-244] Input', i, 'scriptPubKey length:', scriptPubKey.length, 'bytes');
       scriptPubKeysData.push(...encodeVarInt(scriptPubKey.length));
       scriptPubKeysData.push(...scriptPubKey);
     }
+    console.log('[ZIP-244] Total scriptPubKeys data length:', scriptPubKeysData.length);
     const scriptPubKeysSigDigest = blake2b256(new Uint8Array(scriptPubKeysData), 'ZTxTrScriptsHash');
     
     // S.2e: sequence_sig_digest
