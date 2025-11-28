@@ -1,8 +1,27 @@
 // Blake2B in pure Javascript
 // Adapted from the reference implementation in RFC7693
 // Ported to Javascript by DC - https://github.com/dcposch
+// Modified for browser compatibility (removed Node.js require/exports)
 
-const util = require('./util')
+'use strict';
+
+// Utility functions (originally from util.js)
+const util = {
+  normalizeInput: function (input) {
+    if (input instanceof Uint8Array) {
+      return input;
+    } else if (typeof input === 'string') {
+      return new TextEncoder().encode(input);
+    } else if (ArrayBuffer.isView(input)) {
+      return new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+    } else {
+      throw new Error('Input must be string or Uint8Array');
+    }
+  },
+  toHex: function (bytes) {
+    return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+};
 
 // 64-bit unsigned addition
 // Sets v[a,a+1] += v[b,b+1]
@@ -356,10 +375,9 @@ function blake2bHex (input, key, outlen, salt, personal) {
   return util.toHex(output)
 }
 
-module.exports = {
-  blake2b: blake2b,
-  blake2bHex: blake2bHex,
-  blake2bInit: blake2bInit,
-  blake2bUpdate: blake2bUpdate,
-  blake2bFinal: blake2bFinal
-}
+// Export to global scope for browser use
+self.blake2b = blake2b;
+self.blake2bHex = blake2bHex;
+self.blake2bInit = blake2bInit;
+self.blake2bUpdate = blake2bUpdate;
+self.blake2bFinal = blake2bFinal;

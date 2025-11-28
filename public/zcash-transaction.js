@@ -35,13 +35,16 @@ self.ZcashTransaction = (function() {
    * Uses the blake2b.js library loaded in background.js
    */
   function blake2b256(data, personalization) {
-    // blake2b.js exports blake2b function
-    // blake2b(data, key, outlen, config)
-    const config = personalization ? {
-      personalization: new TextEncoder().encode(personalization).slice(0, 16) // BLAKE2b personalization is 16 bytes max
-    } : undefined;
+    // blake2b(input, key, outlen, salt, personal)
+    // Personalization must be exactly 16 bytes or undefined
+    let personal = undefined;
+    if (personalization) {
+      const encoded = new TextEncoder().encode(personalization);
+      personal = new Uint8Array(16);
+      personal.set(encoded.slice(0, 16)); // Copy up to 16 bytes, rest stays 0
+    }
     
-    const hash = self.blake2b(data, null, 32, config); // 32 bytes = 256 bits
+    const hash = self.blake2b(data, null, 32, null, personal); // 32 bytes = 256 bits
     return new Uint8Array(hash);
   }
   
