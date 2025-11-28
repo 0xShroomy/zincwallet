@@ -4,9 +4,25 @@
  * Supports both Zinc (OP_RETURN) and Zerdinals (ScriptSig) protocols
  */
 
-const DEFAULT_FEE_RATE = 1000; // zatoshis per 1000 bytes
-const MIN_FEE = 1000; // minimum 1000 zatoshis
 const DUST_THRESHOLD = 546; // minimum output amount
+
+/**
+ * Calculate transaction ID from hex (double SHA256, reversed)
+ */
+async function calculateTxid(txHex) {
+  // Convert hex to bytes
+  const txBytes = new Uint8Array(txHex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+  
+  // Double SHA256
+  const hash1 = await crypto.subtle.digest('SHA-256', txBytes);
+  const hash2 = await crypto.subtle.digest('SHA-256', hash1);
+  
+  // Reverse bytes for txid
+  const txidBytes = new Uint8Array(hash2).reverse();
+  
+  // Convert to hex
+  return Array.from(txidBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
 /**
  * Build a Zcash transaction with inscription
@@ -72,6 +88,17 @@ async function buildInscriptionTransaction(params) {
 }
 
 /**
+ * Calculate ZIP-317 fee (same as ZcashTransaction uses)
+ * Fee = marginal_fee × max(grace_actions, logical_actions)
+ */
+function calculateZip317Fee(inputCount, outputCount) {
+  const marginalFee = 5000; // zatoshis per action
+  const graceActions = 2;
+  const logicalActions = Math.max(inputCount, outputCount);
+  return marginalFee * Math.max(graceActions, logicalActions);
+}
+
+/**
  * Select UTXOs for transaction
  * Returns: { utxos: [...], totalInput, fee, change }
  */
@@ -84,10 +111,15 @@ function selectUtxos(availableUtxos, inscription) {
   const transferAmount = inscription.transferAmount || 0;
   const mintPayment = inscription.mintPrice ? Math.floor(inscription.mintPrice * 100000000) : 0; // Convert ZEC to zatoshis
   
-  // Estimate transaction size
-  const estimatedSize = estimateTransactionSize(1, inscription); // Start with 1 input
-  const estimatedFee = Math.max(MIN_FEE, Math.ceil(estimatedSize * DEFAULT_FEE_RATE / 1000));
+  // Count outputs: OP_RETURN + treasury + mint payment + transfer + change
+  let outputCount = 1; // At least OP_RETURN
+  if (treasuryAmount > 0) outputCount++;
+  if (mintPayment > 0) outputCount++;
+  if (transferAmount > 0) outputCount++;
+  outputCount++; // Change output
   
+  // Initial fee estimate with 1 input
+  const estimatedFee = calculateZip317Fee(1, outputCount);
   const requiredAmount = treasuryAmount + transferAmount + mintPayment + estimatedFee;
   
   // Select UTXOs
@@ -98,9 +130,8 @@ function selectUtxos(availableUtxos, inscription) {
     selected.push(utxo);
     totalInput += utxo.value;
     
-    // Recalculate fee with actual input count
-    const actualSize = estimateTransactionSize(selected.length, inscription);
-    const actualFee = Math.max(MIN_FEE, Math.ceil(actualSize * DEFAULT_FEE_RATE / 1000));
+    // Recalculate fee with actual input count (ZIP-317)
+    const actualFee = calculateZip317Fee(selected.length, outputCount);
     const actualRequired = treasuryAmount + transferAmount + mintPayment + actualFee;
     
     // Check if we have enough
@@ -180,6 +211,7 @@ function estimateTransactionSize(inputCount, inscription) {
 
 /**
  * Build Zinc protocol transaction (OP_RETURN)
+ * Uses the same ZcashTransaction API as handleSendZec
  */
 async function buildZincTransaction(params) {
   const {
@@ -188,74 +220,99 @@ async function buildZincTransaction(params) {
     toAddress,
     inscription,
     fee,
-    change,
+    _change, // Unused - ZcashTransaction calculates change internally
     privateKey,
     network
   } = params;
   
   console.log('[TransactionBuilder] Building Zinc transaction');
   
-  // Create transaction using zcash-transaction.js
-  const tx = await self.ZcashTransaction.createTransaction({
-    inputs: utxos.map(utxo => ({
-      txid: utxo.txid,
-      vout: utxo.vout,
-      value: utxo.value,
-      address: fromAddress
-    })),
-    outputs: []
-  });
+  // Build outputs array - same format as handleSendZec uses
+  const outputs = [];
+  let outputCount = 0;
   
-  // Add OP_RETURN output (inscription data)
-  tx.addOpReturnOutput(inscription.opReturn);
-  
-  // Add treasury output
-  if (inscription.treasuryAmount > 0) {
-    tx.addOutput(inscription.treasuryAddress, inscription.treasuryAmount);
+  // 1. OP_RETURN output (inscription data) - must be first for Zinc
+  if (inscription.opReturn) {
+    outputs.push({ opReturn: inscription.opReturn });
+    outputCount++;
   }
   
-  // Add mint payment output (to deployer)
+  // 2. Treasury output (for deploy/mint operations)
+  if (inscription.treasuryAmount > 0 && inscription.treasuryAddress) {
+    outputs.push({ 
+      address: inscription.treasuryAddress, 
+      amount: inscription.treasuryAmount / 100000000 // Convert zatoshis to ZEC
+    });
+    outputCount++;
+  }
+  
+  // 3. Mint payment output (payment to deployer for minting)
   if (inscription.mintPrice && inscription.mintRecipient) {
-    const mintPaymentZatoshis = Math.floor(inscription.mintPrice * 100000000);
-    tx.addOutput(inscription.mintRecipient, mintPaymentZatoshis);
+    outputs.push({ 
+      address: inscription.mintRecipient, 
+      amount: inscription.mintPrice // Already in ZEC
+    });
     console.log('[TransactionBuilder] Adding mint payment:', {
       recipient: inscription.mintRecipient,
-      amount: inscription.mintPrice,
-      zatoshis: mintPaymentZatoshis
+      amount: inscription.mintPrice
     });
+    outputCount++;
   }
   
-  // Add transfer output (for ZRC-20 transfers)
+  // 4. Transfer output (for ZRC-20/NFT transfers - dust amount to recipient)
   if (toAddress && inscription.transferAmount > 0) {
-    tx.addOutput(toAddress, inscription.transferAmount);
+    outputs.push({ 
+      address: toAddress, 
+      amount: inscription.transferAmount / 100000000 // Convert zatoshis to ZEC
+    });
+    outputCount++;
   }
   
-  // Add change output
-  if (change > DUST_THRESHOLD) {
-    tx.addOutput(fromAddress, change);
-  }
+  // Build transaction using ZcashTransaction API (same as handleSendZec)
+  const tx = await self.ZcashTransaction.buildTransaction({
+    utxos: utxos,
+    outputs: outputs,
+    changeAddress: fromAddress,
+    feeRate: 1 // ZIP-317 fee is calculated internally
+  });
   
   // Sign transaction
-  await tx.sign(privateKey);
+  const signedTx = await self.ZcashTransaction.signTransaction(tx, privateKey, utxos);
   
-  const txHex = tx.serialize();
-  const txid = tx.getTxid();
+  // Serialize transaction
+  const txHex = self.ZcashTransaction.serializeTransaction(signedTx);
+  
+  // Calculate txid (double SHA256 of serialized tx, reversed)
+  const txid = await calculateTxid(txHex);
+  
+  // Determine change output position (it's always last if present)
+  const hasChange = tx.outputs.length > outputCount;
+  const changeVout = hasChange ? tx.outputs.length - 1 : -1;
+  const actualChangeValue = hasChange ? Number(tx.outputs[tx.outputs.length - 1].value) : 0;
   
   console.log('[TransactionBuilder] Zinc transaction built:', {
     txid,
     size: txHex.length / 2,
-    fee
+    fee,
+    outputCount: tx.outputs.length,
+    hasChange,
+    changeValue: actualChangeValue
   });
   
   return {
     txHex,
     txid,
-    protocol: 'zinc'
+    protocol: 'zinc',
+    // For pending UTXO tracking
+    selectedUtxos: utxos,
+    changeValue: actualChangeValue,
+    changeVout: changeVout
   };
 }
 
 /**
- * Build Zerdinals protocol transaction (ScriptSig)
+ * Build Zerdinals protocol transaction (ScriptSig envelope)
+ * Embeds inscription data in first input's scriptSig
  */
 async function buildZerdinalsTransaction(params) {
   const {
@@ -263,53 +320,76 @@ async function buildZerdinalsTransaction(params) {
     fromAddress,
     inscription,
     fee,
-    change,
+    _change, // Unused - ZcashTransaction calculates change internally
     privateKey,
     network
   } = params;
   
   console.log('[TransactionBuilder] Building Zerdinals transaction');
+  console.log('[TransactionBuilder] Envelope size:', inscription.envelope?.length || 0);
   
-  // For Zerdinals, we need to embed the envelope in the first input's scriptSig
-  // This requires custom script construction
+  // Build outputs array
+  const outputs = [];
+  let outputCount = 0;
   
-  // Create transaction with custom scriptSig for first input
-  const tx = await self.ZcashTransaction.createTransaction({
-    inputs: utxos.map((utxo, index) => ({
-      txid: utxo.txid,
-      vout: utxo.vout,
-      value: utxo.value,
-      address: fromAddress,
-      customScript: index === 0 ? inscription.envelope : null // First input gets envelope
-    })),
-    outputs: []
+  // 1. Dust output to sender (required for Zerdinals)
+  outputs.push({ 
+    address: fromAddress, 
+    amount: DUST_THRESHOLD / 100000000 
   });
+  outputCount++;
   
-  // Add dummy output (required for Zerdinals, typically to sender)
-  tx.addOutput(fromAddress, DUST_THRESHOLD);
-  
-  // Add change output
-  if (change > DUST_THRESHOLD) {
-    tx.addOutput(fromAddress, change);
+  // 2. Treasury output (Zerdinals also has treasury tip)
+  if (inscription.treasuryAmount > 0 && inscription.treasuryAddress) {
+    outputs.push({ 
+      address: inscription.treasuryAddress, 
+      amount: inscription.treasuryAmount / 100000000
+    });
+    outputCount++;
   }
   
-  // Sign transaction (with envelope in first input)
-  await tx.signWithEnvelope(privateKey, inscription.envelope);
+  // Build transaction using ZcashTransaction API
+  const tx = await self.ZcashTransaction.buildTransaction({
+    utxos: utxos,
+    outputs: outputs,
+    changeAddress: fromAddress,
+    feeRate: 1
+  });
   
-  const txHex = tx.serialize();
-  const txid = tx.getTxid();
+  // Sign transaction WITH Zerdinals envelope in first input
+  const signedTx = await self.ZcashTransaction.signTransaction(tx, privateKey, utxos, {
+    envelope: inscription.envelope // This prepends envelope to first input's scriptSig
+  });
+  
+  // Serialize transaction
+  const txHex = self.ZcashTransaction.serializeTransaction(signedTx);
+  
+  // Calculate txid
+  const txid = await calculateTxid(txHex);
+  
+  // Determine change output position (after dust + treasury)
+  const hasChange = tx.outputs.length > outputCount;
+  const changeVout = hasChange ? tx.outputs.length - 1 : -1;
+  const actualChangeValue = hasChange ? Number(tx.outputs[tx.outputs.length - 1].value) : 0;
   
   console.log('[TransactionBuilder] Zerdinals transaction built:', {
     txid,
     size: txHex.length / 2,
-    envelopeSize: inscription.envelope.length,
-    fee
+    fee,
+    outputCount: tx.outputs.length,
+    hasChange,
+    changeValue: actualChangeValue,
+    envelopeSize: inscription.envelope?.length || 0
   });
   
   return {
     txHex,
     txid,
-    protocol: 'zerdinals'
+    protocol: 'zerdinals',
+    // For pending UTXO tracking
+    selectedUtxos: utxos,
+    changeValue: actualChangeValue,
+    changeVout: changeVout
   };
 }
 

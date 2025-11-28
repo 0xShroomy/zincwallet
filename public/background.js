@@ -1234,6 +1234,17 @@ async function handleDeployZrc20(data) {
     
     console.log('[Background] ZRC-20 deployed:', result.txid);
     
+    // Store pending transaction for rapid back-to-back sends
+    if (tx.changeValue > 0) {
+      await storePendingTransaction({
+        txid: result.txid,
+        address: walletState.address,
+        changeValue: tx.changeValue,
+        changeVout: tx.changeVout,
+        spentUtxos: tx.selectedUtxos.map(u => ({ txid: u.txid, vout: u.vout }))
+      });
+    }
+    
     return {
       success: true,
       txid: result.txid,
@@ -1327,6 +1338,17 @@ async function handleMintZrc20(data) {
     
     console.log('[Background] ZRC-20 minted:', result.txid);
     
+    // Store pending transaction for rapid back-to-back sends
+    if (tx.changeValue > 0) {
+      await storePendingTransaction({
+        txid: result.txid,
+        address: walletState.address,
+        changeValue: tx.changeValue,
+        changeVout: tx.changeVout,
+        spentUtxos: tx.selectedUtxos.map(u => ({ txid: u.txid, vout: u.vout }))
+      });
+    }
+    
     return {
       success: true,
       txid: result.txid,
@@ -1383,6 +1405,17 @@ async function handleTransferZrc20(data) {
     const result = await self.TransactionBuilder.broadcastTransaction(tx.txHex, walletState.network);
     
     console.log('[Background] ZRC-20 transferred:', result.txid);
+    
+    // Store pending transaction for rapid back-to-back sends
+    if (tx.changeValue > 0) {
+      await storePendingTransaction({
+        txid: result.txid,
+        address: walletState.address,
+        changeValue: tx.changeValue,
+        changeVout: tx.changeVout,
+        spentUtxos: tx.selectedUtxos.map(u => ({ txid: u.txid, vout: u.vout }))
+      });
+    }
     
     return {
       success: true,
@@ -1441,6 +1474,17 @@ async function handleTransferNFT(data) {
     
     console.log('[Background] NFT transferred:', result.txid);
     
+    // Store pending transaction for rapid back-to-back sends
+    if (tx.changeValue > 0) {
+      await storePendingTransaction({
+        txid: result.txid,
+        address: walletState.address,
+        changeValue: tx.changeValue,
+        changeVout: tx.changeVout,
+        spentUtxos: tx.selectedUtxos.map(u => ({ txid: u.txid, vout: u.vout }))
+      });
+    }
+    
     return {
       success: true,
       txid: result.txid,
@@ -1492,6 +1536,17 @@ async function handleDeployCollection(data) {
     const result = await self.TransactionBuilder.broadcastTransaction(tx.txHex, walletState.network);
     
     console.log('[Background] Collection deployed:', result.txid);
+    
+    // Store pending transaction for rapid back-to-back sends
+    if (tx.changeValue > 0) {
+      await storePendingTransaction({
+        txid: result.txid,
+        address: walletState.address,
+        changeValue: tx.changeValue,
+        changeVout: tx.changeVout,
+        spentUtxos: tx.selectedUtxos.map(u => ({ txid: u.txid, vout: u.vout }))
+      });
+    }
     
     return {
       success: true,
@@ -1547,6 +1602,17 @@ async function handleMintNft(data) {
     
     console.log('[Background] NFT minted:', result.txid);
     
+    // Store pending transaction for rapid back-to-back sends
+    if (tx.changeValue > 0) {
+      await storePendingTransaction({
+        txid: result.txid,
+        address: walletState.address,
+        changeValue: tx.changeValue,
+        changeVout: tx.changeVout,
+        spentUtxos: tx.selectedUtxos.map(u => ({ txid: u.txid, vout: u.vout }))
+      });
+    }
+    
     return {
       success: true,
       txid: result.txid,
@@ -1599,6 +1665,17 @@ async function handleInscribe(data) {
     
     console.log('[Background] Zerdinals inscription created:', result.txid);
     
+    // Store pending transaction for rapid back-to-back sends
+    if (tx.changeValue > 0) {
+      await storePendingTransaction({
+        txid: result.txid,
+        address: walletState.address,
+        changeValue: tx.changeValue,
+        changeVout: tx.changeVout,
+        spentUtxos: tx.selectedUtxos.map(u => ({ txid: u.txid, vout: u.vout }))
+      });
+    }
+    
     return {
       success: true,
       txid: result.txid,
@@ -1615,7 +1692,7 @@ async function handleInscribe(data) {
 }
 
 /**
- * Helper: Get UTXOs for address
+ * Helper: Get UTXOs for address (with pending UTXO tracking for rapid sends)
  */
 async function getUtxosForAddress(address) {
   const proxyUrl = `https://vercel-proxy-loghorizon.vercel.app/api/utxos?address=${address}&network=${walletState.network}`;
@@ -1632,7 +1709,49 @@ async function getUtxosForAddress(address) {
     throw new Error(data.error || 'Failed to fetch UTXOs');
   }
   
-  return data.utxos || [];
+  let utxos = data.utxos || [];
+  
+  // Apply pending UTXO tracking for rapid back-to-back transactions
+  const pendingTxs = await getPendingTransactions(address);
+  if (pendingTxs.length > 0) {
+    console.log('[Background] getUtxosForAddress: Found', pendingTxs.length, 'pending tx(s), adjusting UTXOs...');
+    
+    // Collect all spent UTXOs from pending transactions
+    const spentUtxoKeys = new Set();
+    for (const ptx of pendingTxs) {
+      for (const spent of ptx.spentUtxos || []) {
+        spentUtxoKeys.add(`${spent.txid}:${spent.vout}`);
+      }
+    }
+    
+    // Filter out already-spent UTXOs from API response
+    const originalCount = utxos.length;
+    utxos = utxos.filter(u => !spentUtxoKeys.has(`${u.txid}:${u.vout}`));
+    if (originalCount !== utxos.length) {
+      console.log('[Background] getUtxosForAddress: Filtered out', originalCount - utxos.length, 'spent UTXOs');
+    }
+    
+    // Add pending change outputs as available UTXOs (only if not already spent)
+    for (const ptx of pendingTxs) {
+      if (ptx.changeValue > 0) {
+        const pendingUtxoKey = `${ptx.txid}:${ptx.changeVout}`;
+        if (spentUtxoKeys.has(pendingUtxoKey)) {
+          continue; // Skip - already spent by another pending tx
+        }
+        utxos.push({
+          txid: ptx.txid,
+          vout: ptx.changeVout,
+          value: ptx.changeValue,
+          address: ptx.address,
+          scriptPubKey: '',
+          isPending: true
+        });
+        console.log('[Background] getUtxosForAddress: Added pending UTXO:', ptx.txid, 'vout:', ptx.changeVout, 'value:', ptx.changeValue);
+      }
+    }
+  }
+  
+  return utxos;
 }
 
 /**

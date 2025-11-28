@@ -419,9 +419,11 @@ self.ZcashTransaction = (function() {
   /**
    * Sign transaction
    * privateKey should be a 32-byte Uint8Array
+   * options.envelope - optional Zerdinals envelope to prepend to first input's scriptSig
    */
-  async function signTransaction(tx, privateKey, utxos) {
+  async function signTransaction(tx, privateKey, utxos, options = {}) {
     const signedInputs = [];
+    const envelope = options.envelope; // Zerdinals envelope (Uint8Array)
     
     for (let i = 0; i < tx.inputs.length; i++) {
       const input = tx.inputs[i];
@@ -460,14 +462,25 @@ self.ZcashTransaction = (function() {
       // Get public key from private key
       const publicKey = self.FixedZcashKeys.getPublicKey(privateKey);
       
-      // Build scriptSig: <sig_length> <signature+hashtype> <pubkey_length> <pubkey>
-      const scriptSig = new Uint8Array(signatureWithHashType.length + 1 + publicKey.length + 1);
+      // Build base scriptSig: <sig_length> <signature+hashtype> <pubkey_length> <pubkey>
+      const baseScriptSig = new Uint8Array(signatureWithHashType.length + 1 + publicKey.length + 1);
       let offset = 0;
-      scriptSig[offset++] = signatureWithHashType.length;
-      scriptSig.set(signatureWithHashType, offset);
+      baseScriptSig[offset++] = signatureWithHashType.length;
+      baseScriptSig.set(signatureWithHashType, offset);
       offset += signatureWithHashType.length;
-      scriptSig[offset++] = publicKey.length;
-      scriptSig.set(publicKey, offset);
+      baseScriptSig[offset++] = publicKey.length;
+      baseScriptSig.set(publicKey, offset);
+      
+      // For Zerdinals: prepend envelope to first input's scriptSig
+      let scriptSig;
+      if (i === 0 && envelope && envelope.length > 0) {
+        console.log('[ZcashTx] Prepending Zerdinals envelope to scriptSig, size:', envelope.length);
+        scriptSig = new Uint8Array(envelope.length + baseScriptSig.length);
+        scriptSig.set(envelope, 0);
+        scriptSig.set(baseScriptSig, envelope.length);
+      } else {
+        scriptSig = baseScriptSig;
+      }
       
       signedInputs.push({
         ...input,
