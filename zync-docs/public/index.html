@@ -45,5 +45,6 @@ async function fetchZecPrice(){const priceEl=document.getElementById('zecPrice')
 fetchZecPrice();setInterval(fetchZecPrice,60000);
 function copyDonateAddress(){const input=document.getElementById('donateAddress');const btn=document.getElementById('copyBtn');input.select();document.execCommand('copy');btn.textContent='Copied!';btn.classList.add('copied');setTimeout(()=>{btn.textContent='Copy';btn.classList.remove('copied')},2000)}
 </script>
+<script defer src="/_vercel/insights/script.js"></script>
 </body>
 </html>
